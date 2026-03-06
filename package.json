@@ -1,0 +1,42 @@
+{
+  "name": "@izgateway/dependency-scripts",
+  "version": "1.0.0",
+  "description": "Shared dependency management and security update scripts for IZGateway projects",
+  "main": "index.js",
+  "type": "commonjs",
+  "bin": {
+    "fix-vulnerabilities": "./fix-all-vulnerabilities.js",
+    "test-overrides": "./test-overrides.js",
+    "update-overrides": "./update-overrides.js"
+  },
+  "scripts": {
+    "test": "echo \"No tests specified\" && exit 0"
+  },
+  "keywords": [
+    "npm",
+    "security",
+    "vulnerabilities",
+    "overrides",
+    "dependency-management"
+  ],
+  "author": "IZGateway Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/IZGateway/izg-dependency-scripts.git"
+  },
+  "files": [
+    "fix-all-vulnerabilities.js",
+    "test-overrides.js",
+    "update-overrides.js",
+    "update-dependencies.sh",
+    "update-dependencies.cmd",
+    "README.md"
+  ],
+  "peerDependencies": {
+    "semver": "^7.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
