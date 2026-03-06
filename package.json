@@ -25,6 +25,9 @@
     "type": "git",
     "url": "https://github.com/IZGateway/izg-dependency-scripts.git"
   },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com/"
+  },
   "files": [
     "fix-all-vulnerabilities.js",
     "test-overrides.js",
