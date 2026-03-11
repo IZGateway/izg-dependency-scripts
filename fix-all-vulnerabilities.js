@@ -50,6 +50,17 @@ const OVERRIDE_BLOCKLIST = [
   'immutable', // immutable@3 -> immutable@5 breaks swagger-ui-react which expects v3 API
 ];
 
+// Meta-packages that bundle multiple sub-packages together
+// These should be handled via overrides rather than direct updates to avoid conflicts
+const META_PACKAGES = {
+  'typescript-eslint': [
+    '@typescript-eslint/eslint-plugin',
+    '@typescript-eslint/parser',
+    '@typescript-eslint/utils',
+    '@typescript-eslint/typescript-estree',
+  ]
+};
+
 /**
  * Get the latest version of a package from npm registry
  */
@@ -61,6 +72,19 @@ function getLatestVersion(packageName) {
     console.log(`⚠ Could not fetch latest version for ${packageName}`);
     return null;
   }
+}
+
+/**
+ * Check if a package is provided by a meta-package (e.g., typescript-eslint)
+ * Returns the meta-package name if found, null otherwise
+ */
+function getMetaPackageProvider(packageName) {
+  for (const [metaPkg, subPackages] of Object.entries(META_PACKAGES)) {
+    if (subPackages.includes(packageName)) {
+      return metaPkg;
+    }
+  }
+  return null;
 }
 
 /**
@@ -110,6 +134,63 @@ for (const [pkgName, vulnData] of Object.entries(auditData.vulnerabilities)) {
   const isDirectDevDep = !!packageJson.devDependencies?.[pkgName];
   
   if (isDirect) {
+    // Check if this package is provided by a meta-package
+    const metaPackageProvider = getMetaPackageProvider(pkgName);
+    
+    if (metaPackageProvider) {
+      // Check if the meta-package is installed as a transitive dependency
+      const metaPackageInLock = findAllResolvedVersions(packageLock, metaPackageProvider);
+      
+      if (metaPackageInLock.length > 0) {
+        console.log(`📦 ${pkgName}: Part of meta-package '${metaPackageProvider}' (${metaPackageInLock.join(', ')})`);
+        console.log(`   → Checking if related packages should be updated together`);
+        
+        // Get the target version for this package
+        const fixPackageName = vulnData.fixAvailable?.name;
+        let targetVersion = vulnData.fixAvailable?.version;
+        
+        if (fixPackageName !== pkgName || !targetVersion) {
+          // Fallback to latest version
+          targetVersion = getLatestVersion(pkgName);
+        }
+        
+        if (!targetVersion) {
+          console.log(`⚠ ${pkgName}: Could not determine safe version`);
+          continue;
+        }
+        
+        // Check if other packages from the same meta-package are also direct dependencies
+        const relatedPackages = META_PACKAGES[metaPackageProvider];
+        const directRelatedPackages = relatedPackages.filter(pkg => 
+          packageJson.dependencies?.[pkg] || packageJson.devDependencies?.[pkg]
+        );
+        
+        if (directRelatedPackages.length > 1) {
+          // Multiple related packages are direct dependencies
+          // Update all of them together to maintain version consistency
+          console.log(`   → Found ${directRelatedPackages.length} related packages as direct deps: ${directRelatedPackages.join(', ')}`);
+          console.log(`   → Updating all to version ^${targetVersion} to maintain consistency`);
+          
+          for (const relatedPkg of directRelatedPackages) {
+            const isDevDep = !!packageJson.devDependencies?.[relatedPkg];
+            directUpdates[relatedPkg] = {
+              isDev: isDevDep,
+              version: targetVersion
+            };
+          }
+          changesDetected = true;
+          continue;
+        } else {
+          // Only this package is a direct dependency, use override
+          console.log(`   → Using override instead of direct update to avoid conflicts`);
+          console.log(`➕ ${pkgName}: Adding override ^${targetVersion} (${vulnData.severity})`);
+          overridesToAdd[pkgName] = targetVersion;
+          changesDetected = true;
+          continue;
+        }
+      }
+    }
+    
     // Handle direct dependencies
     const currentVersion = (packageJson.dependencies?.[pkgName] || packageJson.devDependencies?.[pkgName]).replace(/^[\^~]/, '');
     

@@ -191,9 +191,15 @@ These scripts are designed with security in mind:
 - ✅ Logs all changes for review
 - ✅ Works with `package-lock.json` for reproducibility
 - ✅ Respects blocklist for known breaking changes
+- ✅ Handles meta-packages to avoid peer dependency conflicts
 
 **Blocklist:** Packages that require manual review:
 - `immutable` - v3 → v5 breaks swagger-ui-react
+
+**Meta-packages:** Packages that bundle multiple sub-packages:
+- `typescript-eslint` - Bundles @typescript-eslint/eslint-plugin, @typescript-eslint/parser, etc.
+  - When multiple sub-packages are direct dependencies, the script updates them **all together** to maintain version consistency
+  - When only one sub-package is direct AND the meta-package is installed transitively, the script uses **overrides** to avoid peer dependency conflicts
 
 ## 📚 Documentation
 
