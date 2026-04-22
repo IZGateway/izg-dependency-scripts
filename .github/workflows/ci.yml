@@ -1,0 +1,52 @@
+name: CI Publish
+
+# Publishes pre-release npm packages on every push to develop (dist-tag: dev)
+# and release_v* branches (dist-tag: rc).  main is intentionally excluded —
+# it receives only fast-forward merges from completed release branches and is
+# never published directly.
+on:
+  push:
+    branches:
+      - develop
+      - 'release_v*'
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          registry-url: 'https://npm.pkg.github.com/'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Determine version channel
+        id: channel
+        run: |
+          BASE=$(node -p "require('./package.json').version.replace(/-.*$/, '')")
+          if [[ "${{ github.ref_name }}" == "develop" ]]; then
+            echo "version=${BASE}-dev" >> "$GITHUB_OUTPUT"
+            echo "tag=dev" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${BASE}-rc" >> "$GITHUB_OUTPUT"
+            echo "tag=rc" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set pre-release version (in-memory only)
+        run: npm version ${{ steps.channel.outputs.version }} --no-git-tag-version
+
+      - name: Publish to GitHub Packages
+        run: npm publish --force --tag ${{ steps.channel.outputs.tag }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
