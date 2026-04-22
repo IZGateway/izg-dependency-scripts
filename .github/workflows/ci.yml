@@ -1,26 +1,49 @@
 name: CI Publish
 
-# Publishes pre-release npm packages on every push to develop (dist-tag: dev)
-# and release_v* branches (dist-tag: rc).  main is intentionally excluded —
-# it receives only fast-forward merges from completed release branches and is
-# never published directly.
+# Dev publish: fires on every PR push/open/label change targeting main.
+# Release:     fires when a PR targeting main is merged.
+# Manual:      workflow_dispatch publishes @dev from any branch without an open PR.
+#
+# Branching model: feature -> PR -> main (no develop or release_v* branches).
+# Merging a PR to main is the release signal.
+#
+# Bump type is read from a PR label (bump:minor, bump:major).
+# Default when no bump label is present: patch.
+
 on:
-  push:
-    branches:
-      - develop
-      - 'release_v*'
+  pull_request:
+    types: [opened, synchronize, labeled, closed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: >
+          Branch or ref to publish from as @dev (default: branch where workflow
+          is dispatched). Use this to test npm changes before opening a PR.
+        required: false
+        default: ''
 
 permissions:
-  contents: read
-  packages: write
+  contents: write   # required for version bump commit and git tags on release
+  packages: write   # required for npm publish
 
 jobs:
-  publish:
+  # ── Dev publish ────────────────────────────────────────────────────────────
+  # Runs on PR opened/synchronize/labeled and workflow_dispatch.
+  # Computes next version from label (default: patch), publishes X.Y.Z-dev @dev.
+  # Does NOT commit package.json.
+  dev-publish:
+    name: Publish @dev
+    if: >
+      (github.event_name == 'pull_request' && github.event.action != 'closed') ||
+      github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.head_ref || github.ref }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -31,22 +54,101 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Determine version channel
-        id: channel
+      - name: Resolve bump type from PR label
+        id: bump
         run: |
-          BASE=$(node -p "require('./package.json').version.replace(/-.*$/, '')")
-          if [[ "${{ github.ref_name }}" == "develop" ]]; then
-            echo "version=${BASE}-dev" >> "$GITHUB_OUTPUT"
-            echo "tag=dev" >> "$GITHUB_OUTPUT"
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            LABEL=$(gh pr view ${{ github.event.pull_request.number }} \
+              --json labels \
+              --jq '[.labels[].name | select(startswith("bump:"))] | first | ltrimstr("bump:")' \
+              2>/dev/null || echo "")
           else
-            echo "version=${BASE}-rc" >> "$GITHUB_OUTPUT"
-            echo "tag=rc" >> "$GITHUB_OUTPUT"
+            LABEL=""
           fi
+          echo "type=${LABEL:-patch}" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set pre-release version (in-memory only)
-        run: npm version ${{ steps.channel.outputs.version }} --no-git-tag-version
+      - name: Compute next version
+        id: version
+        run: |
+          CURRENT=$(node -p "require('./package.json').version.replace(/-.*$/, '')")
+          BUMP="${{ steps.bump.outputs.type }}"
+          NEXT=$(node -e "
+            const [maj,min,pat] = '$CURRENT'.split('.').map(Number);
+            if ('$BUMP' === 'major') console.log((maj+1)+'.0.0');
+            else if ('$BUMP' === 'minor') console.log(maj+'.'+(min+1)+'.0');
+            else console.log(maj+'.'+min+'.'+(pat+1));
+          ")
+          echo "version=${NEXT}-dev" >> "$GITHUB_OUTPUT"
 
-      - name: Publish to GitHub Packages
-        run: npm publish --force --tag ${{ steps.channel.outputs.tag }}
+      - name: Publish @dev (no commit)
+        run: |
+          npm version ${{ steps.version.outputs.version }} --no-git-tag-version
+          npm publish --force --tag dev
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ── Release ────────────────────────────────────────────────────────────────
+  # Runs only when a PR is merged to main.
+  # Bumps package.json, commits to main [skip ci], publishes @latest, creates tags.
+  release:
+    name: Release @latest
+    if: >
+      github.event_name == 'pull_request' &&
+      github.event.action == 'closed' &&
+      github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          registry-url: 'https://npm.pkg.github.com/'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Resolve bump type from PR label
+        id: bump
+        run: |
+          LABEL=$(gh pr view ${{ github.event.pull_request.number }} \
+            --json labels \
+            --jq '[.labels[].name | select(startswith("bump:"))] | first | ltrimstr("bump:")' \
+            2>/dev/null || echo "")
+          echo "type=${LABEL:-patch}" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Bump version
+        run: npm version ${{ steps.bump.outputs.type }} --no-git-tag-version
+
+      - name: Commit and push version bump
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json
+          git commit -m "chore: release v${VERSION} [skip ci]"
+          git push origin main
+
+      - name: Publish @latest
+        run: npm publish --tag latest
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create version tags
+        run: |
+          MAJOR=$(echo "$VERSION" | cut -d. -f1)
+          git tag "v${VERSION}"
+          git tag -f "v${MAJOR}"
+          git push origin "v${VERSION}"
+          git push origin "v${MAJOR}" --force
