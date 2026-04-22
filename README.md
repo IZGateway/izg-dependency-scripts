@@ -26,7 +26,7 @@ npm install --save-dev @izgateway/dependency-scripts
 **For CI/CD, add to workflow:**
 ```yaml
 - name: Setup npm authentication
-  run: echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" > .npmrc
+  run: echo "//npm.pkg.github.com/:_authToken=${{ secrets.NPM_TOKEN }}" > .npmrc
 ```
 
 ## 🚀 Usage
@@ -60,16 +60,95 @@ update-overrides       # Update existing overrides to latest
 
 ### In GitHub Actions
 
+**Note:** In CI/CD environments, call scripts using `node` explicitly to avoid execution issues.
+
 ```yaml
 - name: Install dependencies
   run: npm ci
 
 - name: Fix vulnerabilities
-  run: fix-vulnerabilities
+  run: node node_modules/@izgateway/dependency-scripts/fix-all-vulnerabilities.js
+  
+- name: Update overrides
+  run: node node_modules/@izgateway/dependency-scripts/update-overrides.js
+  
+- name: Test overrides
+  run: node node_modules/@izgateway/dependency-scripts/test-overrides.js
   
 - name: Update package-lock
   run: npm install
 ```
+
+## 🛡️ Shared GitHub Actions
+
+This repository also hosts reusable composite GitHub Actions for IZGateway CI/CD pipelines.
+Because they are composite actions (not reusable workflows), they run inside the **calling job's
+workspace** — no artifact upload/download is needed to access built JARs.
+
+---
+
+### `cve-scan` — OWASP Dependency Check
+
+**Path:** `.github/actions/cve-scan/action.yml`
+
+Runs OWASP Dependency Check against a JAR or directory using NVD + OSS Index as vulnerability
+sources. The Central Analyzer is disabled because OSS Index matches by GAV coordinates natively
+and NVD matching is accurate from POM metadata alone in a clean Maven build.
+
+#### Inputs
+
+| Input | Required | Default | Description |
+|---|---|---|---|
+| `project-name` | ✅ | — | Display name in the dependency-check report |
+| `scan-path` | ✅ | — | Path to the JAR or directory to scan |
+| `oss-index-username` | ✅ | — | Sonatype OSS Index username |
+| `oss-index-password` | ✅ | — | Sonatype OSS Index API token |
+| `nvd-api-key` | ✅ | — | NVD API key |
+| `suppression-file` | ❌ | `./dependency-suppression.xml` | Path to OWASP suppression XML |
+| `report-output-dir` | ❌ | `target/site` | Directory for HTML/JSON report output |
+| `fail-on-cvss` | ❌ | `7` | Minimum CVSS score that fails the build (0–10) |
+| `continue-on-error` | ❌ | `false` | Set to `true` to report vulnerabilities without failing the build |
+| `artifact-name` | ❌ | `DependencyCheck` | Name of the uploaded report artifact; set to `''` to skip upload |
+
+#### Usage
+
+Replace the inline `Cache Dependency-Check NVD data` + `Dependency Check` steps in your
+`maven.yml` with:
+
+```yaml
+    - name: CVE Scan
+      uses: IZGateway/izg-dependency-scripts/.github/actions/cve-scan@main
+      with:
+        project-name: My Project Name
+        scan-path: target/${{ env.IMAGE_TAG }}.jar
+        oss-index-username: ${{ secrets.OSS_INDEX_USERNAME }}
+        oss-index-password: ${{ secrets.OSS_INDEX_PASSWORD }}
+        nvd-api-key: ${{ secrets.NVDAPIKEY }}
+        artifact-name: DependencyCheck    # omit or set to '' to skip upload
+```
+
+> **Note:** The report upload is handled inside the action (always runs, even on scan failure).
+> You no longer need a separate `upload-artifact` step in your calling workflow.
+
+#### Pinning to a release
+
+`@main` always tracks the latest action. For stability in production workflows, pin to a tag:
+
+```yaml
+      uses: IZGateway/izg-dependency-scripts/.github/actions/cve-scan@v1.1.0
+```
+
+#### Why `--disableCentral`?
+
+The Central Analyzer queries Maven Central's REST API to enrich CPE identifiers for NVD lookups.
+In a clean-build CI pipeline:
+- **OSS Index** matches by `group:artifact:version` natively — it doesn't use CPE at all.
+- **NVD** matching is accurate from the POM's GAV metadata alone for standard artifacts.
+- Central makes additional outbound HTTP calls, adding latency and a rate-limit failure mode.
+
+`--disableCentral` is therefore the correct setting for all IZGateway Maven projects.
+
+---
 
 ## 🔧 Commands
 
