@@ -150,6 +150,69 @@ In a clean-build CI pipeline:
 
 ---
 
+### `ecr-scan-report` — ECR / Inspector2 Scan Report
+
+**Path:** `.github/workflows/ecr-scan-report.yml`
+
+Reusable workflow (`on: workflow_call`) that retrieves AWS Inspector2 findings for a specific
+ECR image tag, filters them to vulnerabilities known at release time (`vendorCreatedAt ≤ release-date`),
+and uploads JSON, CSV, and HTML scan report files as a GitHub Actions artifact using the CDC
+naming convention (`YYYYMMDD_{pkg}_vX.Y.Z_InspectorScan.{ext}`).
+
+The job runs with `continue-on-error: true` — a scan failure will never block a release.
+
+#### Inputs
+
+| Input | Required | Default | Description |
+|---|---|---|---|
+| `ecr-repository` | ✅ | — | ECR repository name (e.g. `izgateway-dev-phiz-web-ws`) |
+| `image-tag` | ✅ | — | Image tag pushed to ECR — `{version}-RELEASE-{run}` format |
+| `gh-pkg-name` | ✅ | — | GitHub package name used in CDC file naming (e.g. `izgw-hub`) |
+| `release-date` | ✅ | — | ISO date (`YYYY-MM-DD`) — filters findings to `vendorCreatedAt ≤ this date` |
+| `aws-region` | ❌ | `us-east-1` | AWS region where Inspector2 is enabled |
+| `artifact-retention-days` | ❌ | `90` | Days to retain the uploaded scan artifact |
+
+The workflow uses `secrets: inherit` — no explicit secret mapping is required in the caller.
+
+#### Usage
+
+Add an `ecr-scan-report` job to your release/publish workflow after the job that pushes to ECR.
+That job must expose `image_tag` and `release_date` as named outputs.
+
+```yaml
+jobs:
+  push-to-aphl:
+    outputs:
+      image_tag:    ${{ steps.push.outputs.image_tag }}
+      release_date: ${{ steps.push.outputs.release_date }}
+    steps:
+      # ... build and push steps ...
+      - name: Set outputs
+        id: push
+        run: |
+          echo "image_tag=${VERSION}-RELEASE-${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+          echo "release_date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
+  ecr-scan-report:
+    uses: IZGateway/izg-dependency-scripts/.github/workflows/ecr-scan-report.yml@v1
+    needs: [push-to-aphl]
+    if: always() && needs.push-to-aphl.result == 'success'
+    with:
+      ecr-repository: <your-ecr-repo-name>
+      image-tag:      ${{ needs.push-to-aphl.outputs.image_tag }}
+      gh-pkg-name:    <your-github-package-name>
+      release-date:   ${{ needs.push-to-aphl.outputs.release_date }}
+    secrets: inherit
+```
+
+#### IAM requirement
+
+The OIDC role assumed by each calling repository must include `inspector2:ListFindings`.
+Adding this permission to all service OIDC roles is tracked in
+[IGDD-2151](https://izgateway.atlassian.net/browse/IGDD-2151).
+
+---
+
 ## 🔧 Commands
 
 ### `fix-vulnerabilities`
