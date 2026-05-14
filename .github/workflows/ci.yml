@@ -24,8 +24,9 @@ on:
         default: ''
 
 permissions:
-  contents: write   # required for version bump commit and git tags on release
-  packages: write   # required for npm publish
+  contents: write       # required for version bump commit and git tags on release
+  packages: write       # required for npm publish
+  pull-requests: read   # required for gh pr view --json labels (bump type resolution)
 
 jobs:
   # ── Dev publish ────────────────────────────────────────────────────────────

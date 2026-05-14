@@ -197,6 +197,9 @@ jobs:
     uses: IZGateway/izg-dependency-scripts/.github/workflows/ecr-scan-report.yml@v1
     needs: [push-to-aphl]
     if: always() && needs.push-to-aphl.result == 'success'
+    permissions:
+      id-token: write   # required for OIDC token exchange (AWS credential configuration)
+      contents: read    # required for actions/checkout inside the called workflow
     with:
       ecr-repository: <your-ecr-repo-name>
       image-tag:      ${{ needs.push-to-aphl.outputs.image_tag }}
@@ -207,7 +210,11 @@ jobs:
 
 #### IAM requirement
 
-The OIDC role assumed by each calling repository must include `inspector2:ListFindings`.
+The calling repository must have `AWS_ROLE_ARN` set as a repository or environment variable
+(**Settings → Secrets and variables → Variables**). This is the ARN of the OIDC role assumed
+during the workflow run.
+
+The OIDC role must include `inspector2:ListFindings`.
 Adding this permission to all service OIDC roles is tracked in
 [IGDD-2151](https://izgateway.atlassian.net/browse/IGDD-2151).
 
