@@ -81,7 +81,7 @@ jobs:
             else if ('$BUMP' === 'minor') console.log(maj+'.'+(min+1)+'.0');
             else console.log(maj+'.'+min+'.'+(pat+1));
           ")
-          echo "version=${NEXT}-dev" >> "$GITHUB_OUTPUT"
+          echo "version=${NEXT}-dev.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
 
       - name: Publish @dev (no commit)
         run: |
