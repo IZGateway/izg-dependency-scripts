@@ -26,7 +26,7 @@ npm install --save-dev @izgateway/dependency-scripts
 **For CI/CD, add to workflow:**
 ```yaml
 - name: Setup npm authentication
-  run: echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" > .npmrc
+  run: echo "//npm.pkg.github.com/:_authToken=${{ secrets.NPM_TOKEN }}" > .npmrc
 ```
 
 ## 🚀 Usage
@@ -60,16 +60,165 @@ update-overrides       # Update existing overrides to latest
 
 ### In GitHub Actions
 
+**Note:** In CI/CD environments, call scripts using `node` explicitly to avoid execution issues.
+
 ```yaml
 - name: Install dependencies
   run: npm ci
 
 - name: Fix vulnerabilities
-  run: fix-vulnerabilities
+  run: node node_modules/@izgateway/dependency-scripts/fix-all-vulnerabilities.js
+  
+- name: Update overrides
+  run: node node_modules/@izgateway/dependency-scripts/update-overrides.js
+  
+- name: Test overrides
+  run: node node_modules/@izgateway/dependency-scripts/test-overrides.js
   
 - name: Update package-lock
   run: npm install
 ```
+
+## 🛡️ Shared GitHub Actions
+
+This repository also hosts reusable composite GitHub Actions for IZGateway CI/CD pipelines.
+Because they are composite actions (not reusable workflows), they run inside the **calling job's
+workspace** — no artifact upload/download is needed to access built JARs.
+
+---
+
+### `cve-scan` — OWASP Dependency Check
+
+**Path:** `.github/actions/cve-scan/action.yml`
+
+Runs OWASP Dependency Check against a JAR or directory using NVD + OSS Index as vulnerability
+sources. The Central Analyzer is disabled because OSS Index matches by GAV coordinates natively
+and NVD matching is accurate from POM metadata alone in a clean Maven build.
+
+#### Inputs
+
+| Input | Required | Default | Description |
+|---|---|---|---|
+| `project-name` | ✅ | — | Display name in the dependency-check report |
+| `scan-path` | ✅ | — | Path to the JAR or directory to scan |
+| `oss-index-username` | ✅ | — | Sonatype OSS Index username |
+| `oss-index-password` | ✅ | — | Sonatype OSS Index API token |
+| `nvd-api-key` | ✅ | — | NVD API key |
+| `suppression-file` | ❌ | `./dependency-suppression.xml` | Path to OWASP suppression XML |
+| `report-output-dir` | ❌ | `target/site` | Directory for HTML/JSON report output |
+| `fail-on-cvss` | ❌ | `7` | Minimum CVSS score that fails the build (0–10) |
+| `continue-on-error` | ❌ | `false` | Set to `true` to report vulnerabilities without failing the build |
+| `artifact-name` | ❌ | `DependencyCheck` | Name of the uploaded report artifact; set to `''` to skip upload |
+
+#### Usage
+
+Replace the inline `Cache Dependency-Check NVD data` + `Dependency Check` steps in your
+`maven.yml` with:
+
+```yaml
+    - name: CVE Scan
+      uses: IZGateway/izg-dependency-scripts/.github/actions/cve-scan@main
+      with:
+        project-name: My Project Name
+        scan-path: target/${{ env.IMAGE_TAG }}.jar
+        oss-index-username: ${{ secrets.OSS_INDEX_USERNAME }}
+        oss-index-password: ${{ secrets.OSS_INDEX_PASSWORD }}
+        nvd-api-key: ${{ secrets.NVDAPIKEY }}
+        artifact-name: DependencyCheck    # omit or set to '' to skip upload
+```
+
+> **Note:** The report upload is handled inside the action (always runs, even on scan failure).
+> You no longer need a separate `upload-artifact` step in your calling workflow.
+
+#### Pinning to a release
+
+`@main` always tracks the latest action. For stability in production workflows, pin to a tag:
+
+```yaml
+      uses: IZGateway/izg-dependency-scripts/.github/actions/cve-scan@v1.1.0
+```
+
+#### Why `--disableCentral`?
+
+The Central Analyzer queries Maven Central's REST API to enrich CPE identifiers for NVD lookups.
+In a clean-build CI pipeline:
+- **OSS Index** matches by `group:artifact:version` natively — it doesn't use CPE at all.
+- **NVD** matching is accurate from the POM's GAV metadata alone for standard artifacts.
+- Central makes additional outbound HTTP calls, adding latency and a rate-limit failure mode.
+
+`--disableCentral` is therefore the correct setting for all IZGateway Maven projects.
+
+---
+
+### `ecr-scan-report` — ECR / Inspector2 Scan Report
+
+**Path:** `.github/workflows/ecr-scan-report.yml`
+
+Reusable workflow (`on: workflow_call`) that retrieves AWS Inspector2 findings for a specific
+ECR image tag, filters them to vulnerabilities known at release time (`vendorCreatedAt ≤ release-date`),
+and uploads JSON, CSV, and HTML scan report files as a GitHub Actions artifact using the CDC
+naming convention (`YYYYMMDD_{pkg}_vX.Y.Z_InspectorScan.{ext}`).
+
+The job runs with `continue-on-error: true` — a scan failure will never block a release.
+
+#### Inputs
+
+| Input | Required | Default | Description |
+|---|---|---|---|
+| `ecr-repository` | ✅ | — | ECR repository name (e.g. `izgateway-dev-phiz-web-ws`) |
+| `image-tag` | ✅ | — | Image tag pushed to ECR — `{version}-RELEASE-{run}` format |
+| `gh-pkg-name` | ✅ | — | GitHub package name used in CDC file naming (e.g. `izgw-hub`) |
+| `release-date` | ✅ | — | ISO date (`YYYY-MM-DD`) — filters findings to `vendorCreatedAt ≤ this date` |
+| `aws-region` | ❌ | `us-east-1` | AWS region where Inspector2 is enabled |
+| `artifact-retention-days` | ❌ | `90` | Days to retain the uploaded scan artifact |
+
+The workflow uses `secrets: inherit` — no explicit secret mapping is required in the caller.
+
+#### Usage
+
+Add an `ecr-scan-report` job to your release/publish workflow after the job that pushes to ECR.
+That job must expose `image_tag` and `release_date` as named outputs.
+
+```yaml
+jobs:
+  push-to-aphl:
+    outputs:
+      image_tag:    ${{ steps.push.outputs.image_tag }}
+      release_date: ${{ steps.push.outputs.release_date }}
+    steps:
+      # ... build and push steps ...
+      - name: Set outputs
+        id: push
+        run: |
+          echo "image_tag=${VERSION}-RELEASE-${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+          echo "release_date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
+  ecr-scan-report:
+    uses: IZGateway/izg-dependency-scripts/.github/workflows/ecr-scan-report.yml@v1
+    needs: [push-to-aphl]
+    if: always() && needs.push-to-aphl.result == 'success'
+    permissions:
+      id-token: write   # required for OIDC token exchange (AWS credential configuration)
+      contents: read    # required for actions/checkout inside the called workflow
+    with:
+      ecr-repository: <your-ecr-repo-name>
+      image-tag:      ${{ needs.push-to-aphl.outputs.image_tag }}
+      gh-pkg-name:    <your-github-package-name>
+      release-date:   ${{ needs.push-to-aphl.outputs.release_date }}
+    secrets: inherit
+```
+
+#### IAM requirement
+
+The calling repository must have `AWS_ROLE_ARN` set as a repository or environment variable
+(**Settings → Secrets and variables → Variables**). This is the ARN of the OIDC role assumed
+during the workflow run.
+
+The OIDC role must include `inspector2:ListFindings`.
+Adding this permission to all service OIDC roles is tracked in
+[IGDD-2151](https://izgateway.atlassian.net/browse/IGDD-2151).
+
+---
 
 ## 🔧 Commands
 
@@ -191,9 +340,15 @@ These scripts are designed with security in mind:
 - ✅ Logs all changes for review
 - ✅ Works with `package-lock.json` for reproducibility
 - ✅ Respects blocklist for known breaking changes
+- ✅ Handles meta-packages to avoid peer dependency conflicts
 
 **Blocklist:** Packages that require manual review:
 - `immutable` - v3 → v5 breaks swagger-ui-react
+
+**Meta-packages:** Packages that bundle multiple sub-packages:
+- `typescript-eslint` - Bundles @typescript-eslint/eslint-plugin, @typescript-eslint/parser, etc.
+  - When multiple sub-packages are direct dependencies, the script updates them **all together** to maintain version consistency
+  - When only one sub-package is direct AND the meta-package is installed transitively, the script uses **overrides** to avoid peer dependency conflicts
 
 ## 📚 Documentation
 

@@ -1,0 +1,1089 @@
+{
+  "findings": [
+    {
+      "findingArn": "arn:aws:inspector2:us-east-1:357442695278:finding/001694b54811b98be286c67ef45587d4",
+      "awsAccountId": "357442695278",
+      "type": "PACKAGE_VULNERABILITY",
+      "description": "Vulnerability in Spring Spring Security. If an application is using theáUserDetails#isEnabled,á#isAccountNonExpired, orá#isAccountNonLockedáuser attributes, to enable, expire, or lock users, thenáDaoAuthenticationProvider's timing attack defense can be bypassed for users who are disabled, expired, or locked.This issue affects Spring Security: from 5.7.0 through 5.7.22, from 5.8.0 through 5.8.24, from 6.3.0 through 6.3.15, from 6.5.0 through 6.5.9, from 7.0.0 through 7.0.4.",
+      "title": "CVE-2026-22746 - org.springframework.security:spring-security-core",
+      "remediation": {
+        "recommendation": {
+          "text": "None Provided"
+        }
+      },
+      "severity": "LOW",
+      "firstObservedAt": "2026-05-07T16:36:26.867-04:00",
+      "lastObservedAt": "2026-05-07T16:36:26.867-04:00",
+      "updatedAt": "2026-05-07T16:36:26.867-04:00",
+      "status": "ACTIVE",
+      "resources": [
+        {
+          "type": "AWS_ECR_CONTAINER_IMAGE",
+          "id": "arn:aws:ecr:us-east-1:357442695278:repository/izgateway-dev-phiz-web-ws/sha256:9f506532fdd3ecb04640126686eda81550afc23163fa55d66af78e7110b3f167",
+          "partition": "aws",
+          "region": "us-east-1",
+          "tags": {},
+          "details": {
+            "awsEcrContainerImage": {
+              "repositoryName": "izgateway-dev-phiz-web-ws",
+              "imageTags": [
+                "2.13.0-SNAPSHOT-809"
+              ],
+              "pushedAt": "2026-04-14T17:52:25.998-04:00",
+              "architecture": "amd64",
+              "imageHash": "sha256:9f506532fdd3ecb04640126686eda81550afc23163fa55d66af78e7110b3f167",
+              "registry": "357442695278",
+              "platform": "ALPINE_LINUX_3_23"
+            }
+          }
+        }
+      ],
+      "inspectorScore": 3.7,
+      "inspectorScoreDetails": {
+        "adjustedCvss": {
+          "scoreSource": "NVD",
+          "cvssSource": "NVD",
+          "version": "3.1",
+          "score": 3.7,
+          "scoringVector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:N/A:N",
+          "adjustments": []
+        }
+      },
+      "packageVulnerabilityDetails": {
+        "vulnerabilityId": "CVE-2026-22746",
+        "vulnerablePackages": [
+          {
+            "name": "org.springframework.security:spring-security-core",
+            "version": "6.5.9",
+            "sourceLayerHash": "sha256:5bd133a470f5b9215b1c3d7d2fba4d5dac9dc93308b6614ad772bf52184254ff",
+            "epoch": 0,
+            "packageManager": "JAVA",
+            "filePath": "/usr/share/izgateway/app.jar/BOOT-INF/lib/spring-security-core-6.5.9.jar",
+            "fixedInVersion": "7.0.5"
+          }
+        ],
+        "source": "NVD",
+        "cvss": [
+          {
+            "baseScore": 3.7,
+            "scoringVector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:N/A:N",
+            "version": "3.1",
+            "source": "NVD"
+          }
+        ],
+        "relatedVulnerabilities": [],
+        "sourceUrl": "https://nvd.nist.gov/vuln/detail/CVE-2026-22746",
+        "vendorSeverity": "LOW",
+        "vendorCreatedAt": "2026-04-22T02:16:02-04:00",
+        "vendorUpdatedAt": "2026-04-24T10:20:02-04:00",
+        "referenceUrls": [
+          "https://nvd.nist.gov/vuln/detail/CVE-2026-22746"
+        ]
+      },
+      "fixAvailable": "YES",
+      "exploitAvailable": "NO",
+      "epss": {
+        "score": 0.00054
+      }
+    },
+    {
+      "findingArn": "arn:aws:inspector2:us-east-1:357442695278:finding/003ed21b03d65c372367caaf72ac92f8",
+      "awsAccountId": "357442695278",
+      "type": "PACKAGE_VULNERABILITY",
+      "description": "Pathological inputs could cause DoS through consumePhrase when parsing an email address according to RFC 5322.",
+      "title": "CVE-2026-42499 - go/stdlib, go/stdlib and 2 more",
+      "remediation": {
+        "recommendation": {
+          "text": "None Provided"
+        }
+      },
+      "severity": "HIGH",
+      "firstObservedAt": "2026-05-09T08:07:38.787-04:00",
+      "lastObservedAt": "2026-05-11T20:48:41.01-04:00",
+      "updatedAt": "2026-05-11T20:48:41.01-04:00",
+      "status": "ACTIVE",
+      "resources": [
+        {
+          "type": "AWS_ECR_CONTAINER_IMAGE",
+          "id": "arn:aws:ecr:us-east-1:357442695278:repository/izgateway-dev-phiz-web-ws/sha256:d8a394ca344d4557a4a0e7398ede4ea1175def90f8f044f142467bd31a5864d0",
+          "partition": "aws",
+          "region": "us-east-1",
+          "tags": {},
+          "details": {
+            "awsEcrContainerImage": {
+              "repositoryName": "izgateway-dev-phiz-web-ws",
+              "imageTags": [
+                "2.14.0-SNAPSHOT-855"
+              ],
+              "pushedAt": "2026-05-04T14:49:30.776-04:00",
+              "architecture": "amd64",
+              "imageHash": "sha256:d8a394ca344d4557a4a0e7398ede4ea1175def90f8f044f142467bd31a5864d0",
+              "registry": "357442695278",
+              "platform": "ALPINE_LINUX_3_23",
+              "lastInUseAt": "2026-05-04T15:16:10.775-04:00",
+              "inUseCount": 0
+            }
+          }
+        }
+      ],
+      "inspectorScore": 7.5,
+      "inspectorScoreDetails": {
+        "adjustedCvss": {
+          "scoreSource": "NVD",
+          "cvssSource": "NVD",
+          "version": "3.1",
+          "score": 7.5,
+          "scoringVector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+          "adjustments": []
+        }
+      },
+      "packageVulnerabilityDetails": {
+        "vulnerabilityId": "CVE-2026-42499",
+        "vulnerablePackages": [
+          {
+            "name": "go/stdlib",
+            "version": "1.25.8",
+            "sourceLayerHash": "sha256:1ab663acdecf7c3eb80be73f904aff4154fee87eb46ef02fb9b8291961a74838",
+            "epoch": 0,
+            "packageManager": "GENERIC",
+            "filePath": "/filebeat/filebeat",
+            "fixedInVersion": "1.26.3"
+          },
+          {
+            "name": "go/stdlib",
+            "version": "1.25.8",
+            "sourceLayerHash": "sha256:1ab663acdecf7c3eb80be73f904aff4154fee87eb46ef02fb9b8291961a74838",
+            "epoch": 0,
+            "packageManager": "GENERIC",
+            "filePath": "/metricbeat/metricbeat",
+            "fixedInVersion": "1.26.3"
+          },
+          {
+            "name": "go/stdlib",
+            "version": "1.25.8",
+            "sourceLayerHash": "sha256:1ab663acdecf7c3eb80be73f904aff4154fee87eb46ef02fb9b8291961a74838",
+            "epoch": 0,
+            "packageManager": "GENERIC",
+            "filePath": "/usr/bin/filebeat",
+            "fixedInVersion": "1.26.3"
+          },
+          {
+            "name": "go/stdlib",
+            "version": "1.25.8",
+            "sourceLayerHash": "sha256:1ab663acdecf7c3eb80be73f904aff4154fee87eb46ef02fb9b8291961a74838",
+            "epoch": 0,
+            "packageManager": "GENERIC",
+            "filePath": "/usr/bin/metricbeat",
+            "fixedInVersion": "1.26.3"
+          }
+        ],
+        "source": "NVD",
+        "cvss": [
+          {
+            "baseScore": 7.5,
+            "scoringVector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+            "version": "3.1",
+            "source": "NVD"
+          }
+        ],
+        "relatedVulnerabilities": [],
+        "sourceUrl": "https://nvd.nist.gov/vuln/detail/CVE-2026-42499",
+        "vendorSeverity": "HIGH",
+        "vendorCreatedAt": "2026-05-07T16:16:44-04:00",
+        "vendorUpdatedAt": "2026-05-08T18:16:33-04:00",
+        "referenceUrls": [
+          "https://groups.google.com/g/golang-announce/c/qcCIEXso47M",
+          "https://nvd.nist.gov/vuln/detail/CVE-2026-42499"
+        ]
+      },
+      "fixAvailable": "YES",
+      "exploitAvailable": "NO",
+      "epss": {
+        "score": 0.00023
+      }
+    },
+    {
+      "findingArn": "arn:aws:inspector2:us-east-1:357442695278:finding/00423a25356edbd54772e489eea1be9d",
+      "awsAccountId": "357442695278",
+      "type": "PACKAGE_VULNERABILITY",
+      "description": "If one side of the TLS connection sends multiple key update messages post-handshake in a single record, the connection can deadlock, causing uncontrolled consumption of resources. This can lead to a denial of service. This only affects TLS 1.3.",
+      "title": "CVE-2026-32283 - go/stdlib, go/stdlib and 2 more",
+      "remediation": {
+        "recommendation": {
+          "text": "None Provided"
+        }
+      },
+      "severity": "HIGH",
+      "firstObservedAt": "2026-04-16T13:38:48.892-04:00",
+      "lastObservedAt": "2026-04-28T18:49:42.261-04:00",
+      "updatedAt": "2026-04-28T18:49:42.261-04:00",
+      "status": "ACTIVE",
+      "resources": [
+        {
+          "type": "AWS_ECR_CONTAINER_IMAGE",
+          "id": "arn:aws:ecr:us-east-1:357442695278:repository/izgateway-dev-phiz-web-ws/sha256:e7ded153ca0e4ce73d1f224daf75f61e888347700ea6621a70181c70f190c124",
+          "partition": "aws",
+          "region": "us-east-1",
+          "tags": {},
+          "details": {
+            "awsEcrContainerImage": {
+              "repositoryName": "izgateway-dev-phiz-web-ws",
+              "imageTags": [
+                "2.13.2-SNAPSHOT-819"
+              ],
+              "pushedAt": "2026-04-16T13:35:53.873-04:00",
+              "architecture": "amd64",
+              "imageHash": "sha256:e7ded153ca0e4ce73d1f224daf75f61e888347700ea6621a70181c70f190c124",
+              "registry": "357442695278",
+              "platform": "ALPINE_LINUX_3_23",
+              "lastInUseAt": "2026-04-16T15:16:10.933-04:00",
+              "inUseCount": 0
+            }
+          }
+        }
+      ],
+      "inspectorScore": 7.5,
+      "inspectorScoreDetails": {
+        "adjustedCvss": {
+          "scoreSource": "NVD",
+          "cvssSource": "NVD",
+          "version": "3.1",
+          "score": 7.5,
+          "scoringVector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+          "adjustments": []
+        }
+      },
+      "packageVulnerabilityDetails": {
+        "vulnerabilityId": "CVE-2026-32283",
+        "vulnerablePackages": [
+          {
+            "name": "go/stdlib",
+            "version": "1.25.8",
+            "sourceLayerHash": "sha256:3bdd045f0b67bd3611030a7cecfc7a0bf4950a9c471599de36a9715a8cc2f894",
+            "epoch": 0,
+            "packageManager": "GENERIC",
+            "filePath": "/filebeat/filebeat",
+            "fixedInVersion": "1.26.2"
+          },
+          {
+            "name": "go/stdlib",
+            "version": "1.25.8",
+            "sourceLayerHash": "sha256:3bdd045f0b67bd3611030a7cecfc7a0bf4950a9c471599de36a9715a8cc2f894",
+            "epoch": 0,
+            "packageManager": "GENERIC",
+            "filePath": "/metricbeat/metricbeat",
+            "fixedInVersion": "1.26.2"
+          },
+          {
+            "name": "go/stdlib",
+            "version": "1.25.8",
+            "sourceLayerHash": "sha256:3bdd045f0b67bd3611030a7cecfc7a0bf4950a9c471599de36a9715a8cc2f894",
+            "epoch": 0,
+            "packageManager": "GENERIC",
+            "filePath": "/usr/bin/filebeat",
+            "fixedInVersion": "1.26.2"
+          },
+          {
+            "name": "go/stdlib",
+            "version": "1.25.8",
+            "sourceLayerHash": "sha256:3bdd045f0b67bd3611030a7cecfc7a0bf4950a9c471599de36a9715a8cc2f894",
+            "epoch": 0,
+            "packageManager": "GENERIC",
+            "filePath": "/usr/bin/metricbeat",
+            "fixedInVersion": "1.26.2"
+          }
+        ],
+        "source": "NVD",
+        "cvss": [
+          {
+            "baseScore": 7.5,
+            "scoringVector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+            "version": "3.1",
+            "source": "NVD"
+          }
+        ],
+        "relatedVulnerabilities": [],
+        "sourceUrl": "https://nvd.nist.gov/vuln/detail/CVE-2026-32283",
+        "vendorSeverity": "HIGH",
+        "vendorCreatedAt": "2026-04-07T22:16:03-04:00",
+        "vendorUpdatedAt": "2026-04-16T15:12:10-04:00",
+        "referenceUrls": [
+          "https://nvd.nist.gov/vuln/detail/CVE-2026-32283",
+          "https://groups.google.com/g/golang-announce/c/0uYbvbPZRWU"
+        ]
+      },
+      "fixAvailable": "YES",
+      "exploitAvailable": "NO",
+      "epss": {
+        "score": 0.00017
+      }
+    },
+    {
+      "findingArn": "arn:aws:inspector2:us-east-1:357442695278:finding/00515730f6333d951169c7301b2a748b",
+      "awsAccountId": "357442695278",
+      "type": "PACKAGE_VULNERABILITY",
+      "description": "Well-crafted inputs reaching ParseAddress, ParseAddressList, and ParseDate were able to trigger excessive CPU exhaustion and memory allocations.",
+      "title": "CVE-2026-39820 - go/stdlib, go/stdlib and 2 more",
+      "remediation": {
+        "recommendation": {
+          "text": "None Provided"
+        }
+      },
+      "severity": "HIGH",
+      "firstObservedAt": "2026-05-09T08:22:00.202-04:00",
+      "lastObservedAt": "2026-05-10T01:42:08.249-04:00",
+      "updatedAt": "2026-05-10T01:42:08.249-04:00",
+      "status": "ACTIVE",
+      "resources": [
+        {
+          "type": "AWS_ECR_CONTAINER_IMAGE",
+          "id": "arn:aws:ecr:us-east-1:357442695278:repository/izgateway-dev-phiz-web-ws/sha256:7ce488a4478eb49c245d0e61498f1f2027df64529cb35545c3dbb758708d92a4",
+          "partition": "aws",
+          "region": "us-east-1",
+          "tags": {},
+          "details": {
+            "awsEcrContainerImage": {
+              "repositoryName": "izgateway-dev-phiz-web-ws",
+              "imageTags": [
+                "2.13.0-SNAPSHOT-810"
+              ],
+              "pushedAt": "2026-04-14T19:27:39.568-04:00",
+              "architecture": "amd64",
+              "imageHash": "sha256:7ce488a4478eb49c245d0e61498f1f2027df64529cb35545c3dbb758708d92a4",
+              "registry": "357442695278",
+              "platform": "ALPINE_LINUX_3_23",
+              "lastInUseAt": "2026-04-14T22:21:34.322-04:00",
+              "inUseCount": 0
+            }
+          }
+        }
+      ],
+      "inspectorScore": 7.5,
+      "inspectorScoreDetails": {
+        "adjustedCvss": {
+          "scoreSource": "NVD",
+          "cvssSource": "NVD",
+          "version": "3.1",
+          "score": 7.5,
+          "scoringVector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+          "adjustments": []
+        }
+      },
+      "packageVulnerabilityDetails": {
+        "vulnerabilityId": "CVE-2026-39820",
+        "vulnerablePackages": [
+          {
+            "name": "go/stdlib",
+            "version": "1.25.8",
+            "sourceLayerHash": "sha256:3f855783b5ece16755b4a71351499f21451298f1d55882282fe4ffa0ce47b26e",
+            "epoch": 0,
+            "packageManager": "GENERIC",
+            "filePath": "/filebeat/filebeat",
+            "fixedInVersion": "1.26.3"
+          },
+          {
+            "name": "go/stdlib",
+            "version": "1.25.8",
+            "sourceLayerHash": "sha256:3f855783b5ece16755b4a71351499f21451298f1d55882282fe4ffa0ce47b26e",
+            "epoch": 0,
+            "packageManager": "GENERIC",
+            "filePath": "/metricbeat/metricbeat",
+            "fixedInVersion": "1.26.3"
+          },
+          {
+            "name": "go/stdlib",
+            "version": "1.25.8",
+            "sourceLayerHash": "sha256:3f855783b5ece16755b4a71351499f21451298f1d55882282fe4ffa0ce47b26e",
+            "epoch": 0,
+            "packageManager": "GENERIC",
+            "filePath": "/usr/bin/filebeat",
+            "fixedInVersion": "1.26.3"
+          },
+          {
+            "name": "go/stdlib",
+            "version": "1.25.8",
+            "sourceLayerHash": "sha256:3f855783b5ece16755b4a71351499f21451298f1d55882282fe4ffa0ce47b26e",
+            "epoch": 0,
+            "packageManager": "GENERIC",
+            "filePath": "/usr/bin/metricbeat",
+            "fixedInVersion": "1.26.3"
+          }
+        ],
+        "source": "NVD",
+        "cvss": [
+          {
+            "baseScore": 7.5,
+            "scoringVector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+            "version": "3.1",
+            "source": "NVD"
+          }
+        ],
+        "relatedVulnerabilities": [],
+        "sourceUrl": "https://nvd.nist.gov/vuln/detail/CVE-2026-39820",
+        "vendorSeverity": "HIGH",
+        "vendorCreatedAt": "2026-05-07T16:16:43-04:00",
+        "vendorUpdatedAt": "2026-05-08T11:16:37-04:00",
+        "referenceUrls": [
+          "https://groups.google.com/g/golang-announce/c/qcCIEXso47M",
+          "https://nvd.nist.gov/vuln/detail/CVE-2026-39820"
+        ]
+      },
+      "fixAvailable": "YES",
+      "exploitAvailable": "NO",
+      "epss": {
+        "score": 0.00018
+      }
+    },
+    {
+      "findingArn": "arn:aws:inspector2:us-east-1:357442695278:finding/00532330d7e3b8b27f6918d36bed9f25",
+      "awsAccountId": "357442695278",
+      "type": "PACKAGE_VULNERABILITY",
+      "description": "Prometheus is an open-source monitoring system and time series database. Versions 3.0 through 3.5.1 and 3.6.0 through 3.11.1 have stored cross-site scripting vulnerabilities in multiple components of the Prometheus web UI where metric names and label values are injected into innerHTML without escaping. In both the Mantine UI and old React UI, chart tooltips on the Graph page render metric names containing HTML/JavaScript without sanitization. In the old React UI, the Metric Explorer fuzzy search results use dangerouslySetInnerHTML without escaping, and heatmap cell tooltips interpolate le label values without sanitization. With Prometheus v3.x defaulting to UTF-8 metric and label name validation, characters like <, >, and \" are now valid in metric names and labels. An attacker who can inject metrics via a compromised scrape target, remote write, or OTLP receiver endpoint can execute arbitrary JavaScript in the browser of any Prometheus user who views the metric in the Graph UI, potentially enabling configurat",
+      "title": "CVE-2026-40179 - github.com/prometheus/prometheus, github.com/prometheus/prometheus",
+      "remediation": {
+        "recommendation": {
+          "text": "None Provided"
+        }
+      },
+      "severity": "MEDIUM",
+      "firstObservedAt": "2026-04-16T20:18:08.163-04:00",
+      "lastObservedAt": "2026-04-28T19:36:45.493-04:00",
+      "updatedAt": "2026-04-28T19:36:45.493-04:00",
+      "status": "ACTIVE",
+      "resources": [
+        {
+          "type": "AWS_ECR_CONTAINER_IMAGE",
+          "id": "arn:aws:ecr:us-east-1:357442695278:repository/izgateway-dev-phiz-web-ws/sha256:7ce488a4478eb49c245d0e61498f1f2027df64529cb35545c3dbb758708d92a4",
+          "partition": "aws",
+          "region": "us-east-1",
+          "tags": {},
+          "details": {
+            "awsEcrContainerImage": {
+              "repositoryName": "izgateway-dev-phiz-web-ws",
+              "imageTags": [
+                "2.13.0-SNAPSHOT-810"
+              ],
+              "pushedAt": "2026-04-14T19:27:39.568-04:00",
+              "architecture": "amd64",
+              "imageHash": "sha256:7ce488a4478eb49c245d0e61498f1f2027df64529cb35545c3dbb758708d92a4",
+              "registry": "357442695278",
+              "platform": "ALPINE_LINUX_3_23",
+              "lastInUseAt": "2026-04-14T22:21:34.322-04:00",
+              "inUseCount": 0
+            }
+          }
+        }
+      ],
+      "inspectorScore": 6.1,
+      "inspectorScoreDetails": {
+        "adjustedCvss": {
+          "scoreSource": "NVD",
+          "cvssSource": "NVD",
+          "version": "3.1",
+          "score": 6.1,
+          "scoringVector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N",
+          "adjustments": []
+        }
+      },
+      "packageVulnerabilityDetails": {
+        "vulnerabilityId": "CVE-2026-40179",
+        "vulnerablePackages": [
+          {
+            "name": "github.com/prometheus/prometheus",
+            "version": "v0.309.1",
+            "sourceLayerHash": "sha256:3f855783b5ece16755b4a71351499f21451298f1d55882282fe4ffa0ce47b26e",
+            "epoch": 0,
+            "packageManager": "GO",
+            "filePath": "/metricbeat/metricbeat",
+            "fixedInVersion": "0.311.2-0.20260410083055-07c6232d159b"
+          },
+          {
+            "name": "github.com/prometheus/prometheus",
+            "version": "v0.309.1",
+            "sourceLayerHash": "sha256:3f855783b5ece16755b4a71351499f21451298f1d55882282fe4ffa0ce47b26e",
+            "epoch": 0,
+            "packageManager": "GO",
+            "filePath": "/usr/bin/metricbeat",
+            "fixedInVersion": "0.311.2-0.20260410083055-07c6232d159b"
+          }
+        ],
+        "source": "NVD",
+        "cvss": [
+          {
+            "baseScore": 6.1,
+            "scoringVector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N",
+            "version": "3.1",
+            "source": "NVD"
+          },
+          {
+            "baseScore": 5.3,
+            "scoringVector": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:P/VC:N/VI:N/VA:N/SC:L/SI:L/SA:N/E:X/CR:X/IR:X/AR:X/MAV:X/MAC:X/MAT:X/MPR:X/MUI:X/MVC:X/MVI:X/MVA:X/MSC:X/MSI:X/MSA:X/S:X/AU:X/R:X/V:X/RE:X/U:X",
+            "version": "4.0",
+            "source": "NVD"
+          }
+        ],
+        "relatedVulnerabilities": [],
+        "sourceUrl": "https://nvd.nist.gov/vuln/detail/CVE-2026-40179",
+        "vendorSeverity": "MEDIUM",
+        "vendorCreatedAt": "2026-04-15T19:16:09-04:00",
+        "vendorUpdatedAt": "2026-04-22T16:04:15-04:00",
+        "referenceUrls": [
+          "https://github.com/prometheus/prometheus/security/advisories/GHSA-vffh-x6r8-xx99",
+          "https://nvd.nist.gov/vuln/detail/CVE-2026-40179",
+          "https://github.com/prometheus/prometheus/pull/18506",
+          "https://github.com/prometheus/prometheus/commit/07c6232d159bfb474a077788be184d87adcfac3c"
+        ]
+      },
+      "fixAvailable": "YES",
+      "exploitAvailable": "NO",
+      "epss": {
+        "score": 0.00011
+      }
+    },
+    {
+      "findingArn": "arn:aws:inspector2:us-east-1:357442695278:finding/0057cb0c48695dfba48a080f9ba38436",
+      "awsAccountId": "357442695278",
+      "type": "PACKAGE_VULNERABILITY",
+      "description": "Index out-of-range when encountering a branch page with zero elements in go.etcd.io/bbolt",
+      "title": "GHSA-6jwv-w5xf-7j27 - go.etcd.io/bbolt, go.etcd.io/bbolt",
+      "remediation": {
+        "recommendation": {
+          "text": "None Provided"
+        }
+      },
+      "severity": "MEDIUM",
+      "firstObservedAt": "2026-04-13T11:12:45.03-04:00",
+      "lastObservedAt": "2026-04-13T20:14:59.466-04:00",
+      "updatedAt": "2026-04-14T20:13:06.519-04:00",
+      "status": "CLOSED",
+      "resources": [
+        {
+          "type": "AWS_ECR_CONTAINER_IMAGE",
+          "id": "arn:aws:ecr:us-east-1:357442695278:repository/izgateway-dev-phiz-web-ws/sha256:e20114f79e0305eb78ed635b65748c109602390c4ce01fd797a02eaeca01ab5d",
+          "partition": "aws",
+          "region": "us-east-1",
+          "tags": {},
+          "details": {
+            "awsEcrContainerImage": {
+              "repositoryName": "izgateway-dev-phiz-web-ws",
+              "imageTags": [
+                "2.13.0-SNAPSHOT-787"
+              ],
+              "pushedAt": "2026-04-13T11:12:08.847-04:00",
+              "architecture": "amd64",
+              "imageHash": "sha256:e20114f79e0305eb78ed635b65748c109602390c4ce01fd797a02eaeca01ab5d",
+              "registry": "357442695278",
+              "platform": "ALPINE_LINUX_3_23",
+              "lastInUseAt": "2026-04-13T11:52:37.187-04:00",
+              "inUseCount": 1
+            }
+          }
+        }
+      ],
+      "inspectorScore": 6.2,
+      "inspectorScoreDetails": {
+        "adjustedCvss": {
+          "scoreSource": "GITHUB",
+          "cvssSource": "GITHUB",
+          "version": "3.1",
+          "score": 6.2,
+          "scoringVector": "CVSS:3.1/AV:L/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+          "adjustments": []
+        }
+      },
+      "packageVulnerabilityDetails": {
+        "vulnerabilityId": "GHSA-6jwv-w5xf-7j27",
+        "vulnerablePackages": [
+          {
+            "name": "go.etcd.io/bbolt",
+            "version": "v1.4.0",
+            "sourceLayerHash": "sha256:3f855783b5ece16755b4a71351499f21451298f1d55882282fe4ffa0ce47b26e",
+            "epoch": 0,
+            "packageManager": "GO",
+            "filePath": "/filebeat/filebeat",
+            "fixedInVersion": "NotAvailable",
+            "remediation": "NotAvailable"
+          },
+          {
+            "name": "go.etcd.io/bbolt",
+            "version": "v1.4.0",
+            "sourceLayerHash": "sha256:3f855783b5ece16755b4a71351499f21451298f1d55882282fe4ffa0ce47b26e",
+            "epoch": 0,
+            "packageManager": "GO",
+            "filePath": "/usr/bin/filebeat",
+            "fixedInVersion": "NotAvailable",
+            "remediation": "NotAvailable"
+          }
+        ],
+        "source": "GITHUB",
+        "cvss": [
+          {
+            "baseScore": 6.2,
+            "scoringVector": "CVSS:3.1/AV:L/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+            "version": "3.1",
+            "source": "GITHUB"
+          }
+        ],
+        "relatedVulnerabilities": [
+          "CVE-2026-33817"
+        ],
+        "sourceUrl": "https://github.com/advisories/GHSA-6jwv-w5xf-7j27",
+        "vendorSeverity": "MODERATE",
+        "vendorCreatedAt": "2026-04-06T17:31:34-04:00",
+        "vendorUpdatedAt": "2026-04-07T20:15:13-04:00",
+        "referenceUrls": [
+          "https://github.com/golang/vulndb/issues/4923",
+          "https://github.com/etcd-io/bbolt/pull/1171/changes/386d5b69785937d1aa20cb25c8439404cf398143",
+          "https://nvd.nist.gov/vuln/detail/CVE-2026-33817",
+          "https://github.com/advisories/GHSA-6jwv-w5xf-7j27",
+          "https://github.com/etcd-io/bbolt"
+        ]
+      },
+      "fixAvailable": "NO",
+      "exploitAvailable": "NO"
+    },
+    {
+      "findingArn": "arn:aws:inspector2:us-east-1:357442695278:finding/005f1cb47370ce6f9406afa7a807b7e2",
+      "awsAccountId": "357442695278",
+      "type": "PACKAGE_VULNERABILITY",
+      "description": "Spring MVC and WebFlux applications are vulnerable to Denial of Service attacks when resolving static resources.\n\nMore precisely, an application can be vulnerable when all the following are true:\n\n * the application is using Spring MVC or Spring WebFlux * the application is serving static resources from the file system * the application is running on a Windows platform\n\nWhen all the conditions above are met, the attacker can send malicious requests that are slow to resolve and that can keep HTTP connections in use. This can cause a Denial of Service on the application.",
+      "title": "CVE-2026-22745 - org.springframework:spring-webflux, org.springframework:spring-webmvc",
+      "remediation": {
+        "recommendation": {
+          "text": "None Provided"
+        }
+      },
+      "severity": "MEDIUM",
+      "firstObservedAt": "2026-05-07T15:58:44.838-04:00",
+      "lastObservedAt": "2026-05-07T15:58:44.838-04:00",
+      "updatedAt": "2026-05-07T15:58:44.838-04:00",
+      "status": "ACTIVE",
+      "resources": [
+        {
+          "type": "AWS_ECR_CONTAINER_IMAGE",
+          "id": "arn:aws:ecr:us-east-1:357442695278:repository/izgateway-dev-phiz-web-ws/sha256:e2ad7d16129a0a5c01cac1af14fa5efb58f78776ffaa128e49d03f666038ac38",
+          "partition": "aws",
+          "region": "us-east-1",
+          "tags": {},
+          "details": {
+            "awsEcrContainerImage": {
+              "repositoryName": "izgateway-dev-phiz-web-ws",
+              "imageTags": [
+                "2.13.0-SNAPSHOT-812"
+              ],
+              "pushedAt": "2026-04-14T22:18:14.354-04:00",
+              "architecture": "amd64",
+              "imageHash": "sha256:e2ad7d16129a0a5c01cac1af14fa5efb58f78776ffaa128e49d03f666038ac38",
+              "registry": "357442695278",
+              "platform": "ALPINE_LINUX_3_23",
+              "lastInUseAt": "2026-04-14T22:47:05.664-04:00",
+              "inUseCount": 0
+            }
+          }
+        }
+      ],
+      "inspectorScore": 5.3,
+      "inspectorScoreDetails": {
+        "adjustedCvss": {
+          "scoreSource": "NVD",
+          "cvssSource": "NVD",
+          "version": "3.1",
+          "score": 5.3,
+          "scoringVector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L",
+          "adjustments": []
+        }
+      },
+      "packageVulnerabilityDetails": {
+        "vulnerabilityId": "CVE-2026-22745",
+        "vulnerablePackages": [
+          {
+            "name": "org.springframework:spring-webflux",
+            "version": "6.2.17",
+            "sourceLayerHash": "sha256:8376849047222f2fa19fa0395ade361a995e34584199e0ddf9afa5af9c6c31b9",
+            "epoch": 0,
+            "packageManager": "JAVA",
+            "filePath": "/usr/share/izgateway/app.jar/BOOT-INF/lib/spring-webflux-6.2.17.jar",
+            "fixedInVersion": "7.0.7"
+          },
+          {
+            "name": "org.springframework:spring-webmvc",
+            "version": "6.2.17",
+            "sourceLayerHash": "sha256:8376849047222f2fa19fa0395ade361a995e34584199e0ddf9afa5af9c6c31b9",
+            "epoch": 0,
+            "packageManager": "JAVA",
+            "filePath": "/usr/share/izgateway/app.jar/BOOT-INF/lib/spring-webmvc-6.2.17.jar",
+            "fixedInVersion": "7.0.7"
+          }
+        ],
+        "source": "NVD",
+        "cvss": [
+          {
+            "baseScore": 5.3,
+            "scoringVector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L",
+            "version": "3.1",
+            "source": "NVD"
+          }
+        ],
+        "relatedVulnerabilities": [],
+        "sourceUrl": "https://nvd.nist.gov/vuln/detail/CVE-2026-22745",
+        "vendorSeverity": "MEDIUM",
+        "vendorCreatedAt": "2026-04-29T08:16:18-04:00",
+        "vendorUpdatedAt": "2026-05-04T10:50:16-04:00",
+        "referenceUrls": [
+          "https://nvd.nist.gov/vuln/detail/CVE-2026-22745",
+          "https://nvd.nist.gov/vuln-metrics/cvss/v3-calculator?vector=AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L&version=3.1"
+        ]
+      },
+      "fixAvailable": "YES",
+      "exploitAvailable": "NO",
+      "epss": {
+        "score": 0.00057
+      }
+    },
+    {
+      "findingArn": "arn:aws:inspector2:us-east-1:357442695278:finding/006f3ab55bbc712a4b467a2a649cd0de",
+      "awsAccountId": "357442695278",
+      "type": "PACKAGE_VULNERABILITY",
+      "description": "### Summary Netty's chunk size parser silently overflows int, enabling request smuggling attacks.\n\n### Details io.netty.handler.codec.http.HttpObjectDecoder#getChunkSize silently overflows int.\n\nThe size is accumulated as follows:\n\nresult *= 16; result += digit;\n\nThe result is checked only for negative values. However, with a carefully crafted chunk size, the result can be a valid size.\n\n### PoC The test below shows Netty successfully parsing the second request, demonstrating how an attacker can smuggle a second request inside a chunked body.\n\n```java @Test public void test() { String requestStr = \"POST / HTTP/1.1\\r\\n\" + \"Host: localhost\\r\\n\" + \"Transfer-Encoding: chunked\\r\\n\\r\\n\" + \"100000004\\r\\n\" + \"test\\r\\n\" + \"0\\r\\n\" + \"\\r\\n\" + \"GET /smuggled HTTP/1.1\\r\\n\" + \"Host: localhost\\r\\n\" + \"Content-Length: 0\\r\\n\" + \"\\r\\n\";\n\n EmbeddedChannel channel = new EmbeddedChannel(new HttpRequestDecoder()); assertTrue(channel.writeInbound(Unpooled.copiedBuffer(requestStr, CharsetUtil.US_ASCII)));\n\n // Request 1 HttpRequest ",
+      "title": "GHSA-m4cv-j2px-7723 - io.netty:netty-codec-http, io.netty:netty-codec-http",
+      "remediation": {
+        "recommendation": {
+          "text": "None Provided"
+        }
+      },
+      "severity": "MEDIUM",
+      "firstObservedAt": "2026-05-07T16:48:18.139-04:00",
+      "lastObservedAt": "2026-05-07T16:48:18.139-04:00",
+      "updatedAt": "2026-05-07T16:48:18.139-04:00",
+      "status": "ACTIVE",
+      "resources": [
+        {
+          "type": "AWS_ECR_CONTAINER_IMAGE",
+          "id": "arn:aws:ecr:us-east-1:357442695278:repository/izgateway-dev-phiz-web-ws/sha256:c944e86fc13a0a83e229df4b537b97ebc88d14613ed574f24900633ffe365bc0",
+          "partition": "aws",
+          "region": "us-east-1",
+          "tags": {},
+          "details": {
+            "awsEcrContainerImage": {
+              "repositoryName": "izgateway-dev-phiz-web-ws",
+              "imageTags": [
+                "2.13.2-SNAPSHOT-827"
+              ],
+              "pushedAt": "2026-04-24T02:53:27.97-04:00",
+              "architecture": "amd64",
+              "imageHash": "sha256:c944e86fc13a0a83e229df4b537b97ebc88d14613ed574f24900633ffe365bc0",
+              "registry": "357442695278",
+              "platform": "ALPINE_LINUX_3_23",
+              "lastInUseAt": "2026-04-24T04:18:18.359-04:00",
+              "inUseCount": 0
+            }
+          }
+        }
+      ],
+      "inspectorScore": 6.5,
+      "inspectorScoreDetails": {
+        "adjustedCvss": {
+          "scoreSource": "GITHUB",
+          "cvssSource": "GITHUB",
+          "version": "3.1",
+          "score": 6.5,
+          "scoringVector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:L",
+          "adjustments": []
+        }
+      },
+      "packageVulnerabilityDetails": {
+        "vulnerabilityId": "GHSA-m4cv-j2px-7723",
+        "vulnerablePackages": [
+          {
+            "name": "io.netty:netty-codec-http",
+            "version": "4.2.12.Final",
+            "sourceLayerHash": "sha256:ade6135ab6d7f0d9312f5985fa2cd9f9e072e7eef6d7065c2aa6a171efb11462",
+            "epoch": 0,
+            "packageManager": "JAVA",
+            "filePath": "/usr/share/izgateway/app.jar/BOOT-INF/lib/netty-codec-http-4.2.12.Final.jar",
+            "fixedInVersion": "4.2.13.Final"
+          },
+          {
+            "name": "io.netty:netty-codec-http",
+            "version": "4.2.12.Final",
+            "sourceLayerHash": "sha256:ade6135ab6d7f0d9312f5985fa2cd9f9e072e7eef6d7065c2aa6a171efb11462",
+            "epoch": 0,
+            "packageManager": "JAVA",
+            "filePath": "/usr/share/izgateway/app.jar/BOOT-INF/lib/netty-codec-http-4.2.12.Final.jar/META-INF/maven/io.netty/netty-codec-http/pom.properties",
+            "fixedInVersion": "4.2.13.Final"
+          }
+        ],
+        "source": "GITHUB",
+        "cvss": [
+          {
+            "baseScore": 6.5,
+            "scoringVector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:L",
+            "version": "3.1",
+            "source": "GITHUB"
+          }
+        ],
+        "relatedVulnerabilities": [
+          "CVE-2026-42580"
+        ],
+        "sourceUrl": "https://github.com/advisories/GHSA-m4cv-j2px-7723",
+        "vendorSeverity": "MODERATE",
+        "vendorCreatedAt": "2026-05-06T20:13:05-04:00",
+        "vendorUpdatedAt": "2026-05-06T20:13:05-04:00",
+        "referenceUrls": [
+          "https://github.com/advisories/GHSA-m4cv-j2px-7723",
+          "https://github.com/netty/netty",
+          "https://github.com/netty/netty/security/advisories/GHSA-m4cv-j2px-7723"
+        ]
+      },
+      "fixAvailable": "YES",
+      "exploitAvailable": "NO"
+    },
+    {
+      "findingArn": "arn:aws:inspector2:us-east-1:357442695278:finding/008bc38b176065f0ae79292ff829b0c9",
+      "awsAccountId": "357442695278",
+      "type": "PACKAGE_VULNERABILITY",
+      "description": "**CVSSv3.1 Rating**: [Medium] **CVSSv3.1 Score**: [5.9] **CVSSv3.1 Vector String**: [CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:N/A:H]\n\n## Summary and Impact An issue exists in the the EventStream header decoder in AWS SDK for Go v2 in versions predating [2026-03-23](https://github.com/aws/aws-sdk-go-v2/releases/tag/release-2026-03-23). An actor can send a malformed EventStream response frame containing a crafted header value type byte outside the valid range, which can cause the host process to terminate.\n\nImpacted versions: < [2026-03-23](https://github.com/aws/aws-sdk-go-v2/releases/tag/release-2026-03-23)\n\n## Patches This issue has been addressed in versions [2026-03-23](https://github.com/aws/aws-sdk-go-v2/releases/tag/release-2026-03-23) and above. We recommend upgrading to the latest version and ensuring any forked or derivative code is patched to incorporate the new fixes. \n\n## Workarounds Not Applicable\n\n## References If you have any questions or comments about this advisory, we ask that you contact [AWS",
+      "title": "GHSA-xmrv-pmrh-hhx2 - github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream, github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream and 4 more",
+      "remediation": {
+        "recommendation": {
+          "text": "None Provided"
+        }
+      },
+      "severity": "MEDIUM",
+      "firstObservedAt": "2026-04-14T15:52:03.941-04:00",
+      "lastObservedAt": "2026-04-14T16:23:30.512-04:00",
+      "updatedAt": "2026-04-14T16:23:30.512-04:00",
+      "status": "ACTIVE",
+      "resources": [
+        {
+          "type": "AWS_ECR_CONTAINER_IMAGE",
+          "id": "arn:aws:ecr:us-east-1:357442695278:repository/izgateway-dev-phiz-web-ws/sha256:f26da70360e1d92da1734aae30c54266e841a7967de20314a4cee4b609b24466",
+          "partition": "aws",
+          "region": "us-east-1",
+          "tags": {},
+          "details": {
+            "awsEcrContainerImage": {
+              "repositoryName": "izgateway-dev-phiz-web-ws",
+              "imageTags": [
+                "2.13.0-SNAPSHOT-806"
+              ],
+              "pushedAt": "2026-04-14T15:51:26.14-04:00",
+              "architecture": "amd64",
+              "imageHash": "sha256:f26da70360e1d92da1734aae30c54266e841a7967de20314a4cee4b609b24466",
+              "registry": "357442695278",
+              "platform": "ALPINE_LINUX_3_23"
+            }
+          }
+        }
+      ],
+      "inspectorScore": 5.9,
+      "inspectorScoreDetails": {
+        "adjustedCvss": {
+          "scoreSource": "GITHUB",
+          "cvssSource": "GITHUB",
+          "version": "3.1",
+          "score": 5.9,
+          "scoringVector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:N/A:H",
+          "adjustments": []
+        }
+      },
+      "packageVulnerabilityDetails": {
+        "vulnerabilityId": "GHSA-xmrv-pmrh-hhx2",
+        "vulnerablePackages": [
+          {
+            "name": "github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream",
+            "version": "v1.7.5",
+            "sourceLayerHash": "sha256:3f855783b5ece16755b4a71351499f21451298f1d55882282fe4ffa0ce47b26e",
+            "epoch": 0,
+            "packageManager": "GO",
+            "filePath": "/filebeat/filebeat",
+            "fixedInVersion": "1.7.8"
+          },
+          {
+            "name": "github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream",
+            "version": "v1.7.5",
+            "sourceLayerHash": "sha256:3f855783b5ece16755b4a71351499f21451298f1d55882282fe4ffa0ce47b26e",
+            "epoch": 0,
+            "packageManager": "GO",
+            "filePath": "/usr/bin/filebeat",
+            "fixedInVersion": "1.7.8"
+          },
+          {
+            "name": "github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs",
+            "version": "v1.50.2",
+            "sourceLayerHash": "sha256:3f855783b5ece16755b4a71351499f21451298f1d55882282fe4ffa0ce47b26e",
+            "epoch": 0,
+            "packageManager": "GO",
+            "filePath": "/filebeat/filebeat",
+            "fixedInVersion": "1.65.0"
+          },
+          {
+            "name": "github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs",
+            "version": "v1.50.2",
+            "sourceLayerHash": "sha256:3f855783b5ece16755b4a71351499f21451298f1d55882282fe4ffa0ce47b26e",
+            "epoch": 0,
+            "packageManager": "GO",
+            "filePath": "/usr/bin/filebeat",
+            "fixedInVersion": "1.65.0"
+          },
+          {
+            "name": "github.com/aws/aws-sdk-go-v2/service/s3",
+            "version": "v1.96.2",
+            "sourceLayerHash": "sha256:3f855783b5ece16755b4a71351499f21451298f1d55882282fe4ffa0ce47b26e",
+            "epoch": 0,
+            "packageManager": "GO",
+            "filePath": "/filebeat/filebeat",
+            "fixedInVersion": "1.97.3"
+          },
+          {
+            "name": "github.com/aws/aws-sdk-go-v2/service/s3",
+            "version": "v1.96.2",
+            "sourceLayerHash": "sha256:3f855783b5ece16755b4a71351499f21451298f1d55882282fe4ffa0ce47b26e",
+            "epoch": 0,
+            "packageManager": "GO",
+            "filePath": "/usr/bin/filebeat",
+            "fixedInVersion": "1.97.3"
+          }
+        ],
+        "source": "GITHUB",
+        "cvss": [
+          {
+            "baseScore": 5.9,
+            "scoringVector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:N/A:H",
+            "version": "3.1",
+            "source": "GITHUB"
+          }
+        ],
+        "relatedVulnerabilities": [],
+        "sourceUrl": "https://github.com/advisories/GHSA-xmrv-pmrh-hhx2",
+        "vendorSeverity": "MODERATE",
+        "vendorCreatedAt": "2026-04-07T20:18:56-04:00",
+        "vendorUpdatedAt": "2026-04-07T20:18:57-04:00",
+        "referenceUrls": [
+          "https://github.com/aws/aws-sdk-go-v2",
+          "https://github.com/aws/aws-sdk-go-v2/security/advisories/GHSA-xmrv-pmrh-hhx2",
+          "https://github.com/advisories/GHSA-xmrv-pmrh-hhx2",
+          "https://github.com/aws/aws-sdk-go-v2/releases/tag/release-2026-03-23"
+        ]
+      },
+      "fixAvailable": "YES",
+      "exploitAvailable": "NO"
+    },
+    {
+      "findingArn": "arn:aws:inspector2:us-east-1:357442695278:finding/008d4606b51a4cec5a04c36fbb840450",
+      "awsAccountId": "357442695278",
+      "type": "PACKAGE_VULNERABILITY",
+      "description": "During chain building, the amount of work that is done is not correctly limited when a large number of intermediate certificates are passed in VerifyOptions.Intermediates, which can lead to a denial of service. This affects both direct users of crypto/x509 and users of crypto/tls.",
+      "title": "CVE-2026-32280 - go/stdlib, go/stdlib and 2 more",
+      "remediation": {
+        "recommendation": {
+          "text": "None Provided"
+        }
+      },
+      "severity": "HIGH",
+      "firstObservedAt": "2026-05-05T09:12:38.333-04:00",
+      "lastObservedAt": "2026-05-11T20:50:11.734-04:00",
+      "updatedAt": "2026-05-11T20:50:11.734-04:00",
+      "status": "ACTIVE",
+      "resources": [
+        {
+          "type": "AWS_ECR_CONTAINER_IMAGE",
+          "id": "arn:aws:ecr:us-east-1:357442695278:repository/izgateway-dev-phiz-web-ws/sha256:8be7e7b304571b6149a480a4d84905acf59cdc57ea65f3127bc8681b4b5a838f",
+          "partition": "aws",
+          "region": "us-east-1",
+          "tags": {},
+          "details": {
+            "awsEcrContainerImage": {
+              "repositoryName": "izgateway-dev-phiz-web-ws",
+              "imageTags": [
+                "2.14.0-SNAPSHOT-858"
+              ],
+              "pushedAt": "2026-05-05T09:12:00.915-04:00",
+              "architecture": "amd64",
+              "imageHash": "sha256:8be7e7b304571b6149a480a4d84905acf59cdc57ea65f3127bc8681b4b5a838f",
+              "registry": "357442695278",
+              "platform": "ALPINE_LINUX_3_23",
+              "lastInUseAt": "2026-05-06T15:16:10.946-04:00",
+              "inUseCount": 0
+            }
+          }
+        }
+      ],
+      "inspectorScore": 7.5,
+      "inspectorScoreDetails": {
+        "adjustedCvss": {
+          "scoreSource": "NVD",
+          "cvssSource": "NVD",
+          "version": "3.1",
+          "score": 7.5,
+          "scoringVector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+          "adjustments": []
+        }
+      },
+      "packageVulnerabilityDetails": {
+        "vulnerabilityId": "CVE-2026-32280",
+        "vulnerablePackages": [
+          {
+            "name": "go/stdlib",
+            "version": "1.25.8",
+            "sourceLayerHash": "sha256:1ab663acdecf7c3eb80be73f904aff4154fee87eb46ef02fb9b8291961a74838",
+            "epoch": 0,
+            "packageManager": "GENERIC",
+            "filePath": "/filebeat/filebeat",
+            "fixedInVersion": "1.26.2"
+          },
+          {
+            "name": "go/stdlib",
+            "version": "1.25.8",
+            "sourceLayerHash": "sha256:1ab663acdecf7c3eb80be73f904aff4154fee87eb46ef02fb9b8291961a74838",
+            "epoch": 0,
+            "packageManager": "GENERIC",
+            "filePath": "/metricbeat/metricbeat",
+            "fixedInVersion": "1.26.2"
+          },
+          {
+            "name": "go/stdlib",
+            "version": "1.25.8",
+            "sourceLayerHash": "sha256:1ab663acdecf7c3eb80be73f904aff4154fee87eb46ef02fb9b8291961a74838",
+            "epoch": 0,
+            "packageManager": "GENERIC",
+            "filePath": "/usr/bin/filebeat",
+            "fixedInVersion": "1.26.2"
+          },
+          {
+            "name": "go/stdlib",
+            "version": "1.25.8",
+            "sourceLayerHash": "sha256:1ab663acdecf7c3eb80be73f904aff4154fee87eb46ef02fb9b8291961a74838",
+            "epoch": 0,
+            "packageManager": "GENERIC",
+            "filePath": "/usr/bin/metricbeat",
+            "fixedInVersion": "1.26.2"
+          }
+        ],
+        "source": "NVD",
+        "cvss": [
+          {
+            "baseScore": 7.5,
+            "scoringVector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+            "version": "3.1",
+            "source": "NVD"
+          }
+        ],
+        "relatedVulnerabilities": [],
+        "sourceUrl": "https://nvd.nist.gov/vuln/detail/CVE-2026-32280",
+        "vendorSeverity": "HIGH",
+        "vendorCreatedAt": "2026-04-07T22:16:03-04:00",
+        "vendorUpdatedAt": "2026-04-16T15:16:42-04:00",
+        "referenceUrls": [
+          "https://groups.google.com/g/golang-announce/c/0uYbvbPZRWU",
+          "https://nvd.nist.gov/vuln/detail/CVE-2026-32280"
+        ]
+      },
+      "fixAvailable": "YES",
+      "exploitAvailable": "NO",
+      "epss": {
+        "score": 0.00019
+      }
+    }
+  ]
+}

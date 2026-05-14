@@ -1,0 +1,80 @@
+name: ECR Inspector2 Scan Report
+
+on:
+  workflow_call:
+    inputs:
+      ecr-repository:
+        description: ECR repository name (e.g. izgateway-dev-phiz-web-ws)
+        required: true
+        type: string
+      image-tag:
+        description: >
+          {version}-RELEASE-{run} tag pushed to ECR (e.g. 2.4.0-RELEASE-42).
+          Passed as the image-tag input to ecr-scan-report.sh.
+        required: true
+        type: string
+      gh-pkg-name:
+        description: GitHub package name used for CDC file naming (e.g. izgw-hub)
+        required: true
+        type: string
+      release-date:
+        description: >
+          ISO date (YYYY-MM-DD) of the release. Findings with vendorCreatedAt
+          after this date are excluded from all output files.
+        required: true
+        type: string
+      aws-region:
+        description: AWS region for Inspector2 and ECR
+        required: false
+        type: string
+        default: us-east-1
+      artifact-retention-days:
+        description: GitHub Actions artifact retention period in days
+        required: false
+        type: number
+        default: 90
+
+jobs:
+  ecr-scan-report:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Checkout scripts from izg-dependency-scripts
+        uses: actions/checkout@v4
+        with:
+          repository: IZGateway/izg-dependency-scripts
+          ref: v1
+          path: izg-dependency-scripts
+          sparse-checkout: |
+            .github/scripts
+
+      - name: Extract version from image tag
+        id: version
+        env:
+          IMAGE_TAG: ${{ inputs.image-tag }}
+        run: echo "value=${IMAGE_TAG%%-RELEASE-*}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate ECR scan report
+        run: |
+          chmod +x izg-dependency-scripts/.github/scripts/ecr-scan-report.sh
+          izg-dependency-scripts/.github/scripts/ecr-scan-report.sh \
+            --repo         "${{ inputs.ecr-repository }}" \
+            --tag          "${{ inputs.image-tag }}" \
+            --pkg          "${{ inputs.gh-pkg-name }}" \
+            --release-date "${{ inputs.release-date }}" \
+            --out-dir      scan-reports
+
+      - name: Upload scan report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.gh-pkg-name }}_v${{ steps.version.outputs.value }}_InspectorScan
+          path: scan-reports/
+          retention-days: ${{ inputs.artifact-retention-days }}
