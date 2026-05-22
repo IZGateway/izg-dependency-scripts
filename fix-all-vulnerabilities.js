@@ -43,6 +43,7 @@ if (!packageJson.overrides) {
 const overridesToAdd = {};
 const directUpdates = {};
 let changesDetected = false;
+let eslintBraceFixed = false;
 
 // Packages that should NOT be automatically overridden due to breaking changes
 // These require manual review
@@ -112,6 +113,40 @@ function getLatestCompatibleVersion(packageName, currentVersion) {
   } catch (e) {
     return null;
   }
+}
+
+/**
+ * When brace-expansion is globally overridden to v5+, add a scoped eslint override
+ * pinning it to the latest v4.x within eslint's dependency tree.
+ *
+ * Why v4 and not v2: eslint v8/v9 use minimatch v3 (brace-expansion ^1 API). brace-expansion
+ * v5 changed its export shape, breaking that chain. v4 is the last major with the v1-compatible
+ * export API — confirmed by minimatch@10.0.2 requiring ^4.0.1 before the ecosystem moved to v5.
+ * v4 fixes more CVEs than v2 while remaining a safe drop-in for minimatch v3.
+ *
+ * Upgrading to eslint v10 (which uses minimatch v10 -> brace-expansion v5 natively) would
+ * eliminate the need for this scoped override, but eslint v10 is currently blocked by upstream
+ * plugin peer-dependency caps. Remove this scoped override once the downstream project upgrades
+ * to eslint v10.
+ */
+function applyEslintBraceExpansionCompat() {
+  const globalBrace = packageJson.overrides['brace-expansion'];
+  if (!globalBrace) return false;
+
+  let minVer;
+  try { minVer = semver.minVersion(globalBrace); } catch (e) { return false; }
+  if (!minVer || minVer.major < 5) return false;
+
+  if (packageJson.overrides.eslint?.['brace-expansion']) {
+    console.log(`✓ eslint/brace-expansion: existing scoped override retained (${packageJson.overrides.eslint['brace-expansion']})`);
+    return false;
+  }
+
+  const latestV4 = getLatestCompatibleVersion('brace-expansion', '4.0.0') || '4.0.1';
+  if (!packageJson.overrides.eslint) packageJson.overrides.eslint = {};
+  packageJson.overrides.eslint['brace-expansion'] = `^${latestV4}`;
+  console.log(`➕ eslint/brace-expansion: scoped override ^${latestV4} (eslint v8/v9 requires brace-expansion v1 API; v5 changed exports)`);
+  return true;
 }
 
 // Analyze vulnerabilities
@@ -376,7 +411,7 @@ for (const [pkgName, vulnData] of Object.entries(auditData.vulnerabilities)) {
 // Apply changes
 if (Object.keys(overridesToAdd).length > 0 || Object.keys(directUpdates).length > 0) {
   console.log('\n=== Applying Fixes ===');
-  
+
   // Update direct dependencies
   if (Object.keys(directUpdates).length > 0) {
     console.log('\n📦 Direct Dependency Updates:');
@@ -386,7 +421,7 @@ if (Object.keys(overridesToAdd).length > 0 || Object.keys(directUpdates).length 
       console.log(`  ${pkg}@${info.version} (${section})`);
     }
   }
-  
+
   // Add/update overrides
   if (Object.keys(overridesToAdd).length > 0) {
     console.log('\n🔧 Override Updates:');
@@ -394,33 +429,54 @@ if (Object.keys(overridesToAdd).length > 0 || Object.keys(directUpdates).length 
       packageJson.overrides[pkg] = `^${version}`;
       console.log(`  ${pkg}@^${version}`);
     }
-    
-    // Sort overrides alphabetically for consistency
-    const sortedOverrides = {};
-    Object.keys(packageJson.overrides).sort().forEach(key => {
-      sortedOverrides[key] = packageJson.overrides[key];
-    });
-    packageJson.overrides = sortedOverrides;
   }
-  
+
+  // Apply brace-expansion eslint compatibility override if needed
+  eslintBraceFixed = applyEslintBraceExpansionCompat();
+
+  // Sort overrides alphabetically for consistency
+  const sortedOverrides = {};
+  Object.keys(packageJson.overrides).sort().forEach(key => {
+    sortedOverrides[key] = packageJson.overrides[key];
+  });
+  packageJson.overrides = sortedOverrides;
+
   // Write package.json
   fs.writeFileSync('package.json', JSON.stringify(packageJson, null, 2) + '\n');
-  
+
   console.log('\n✅ Updated package.json');
   console.log('\n📋 Next Steps:');
   console.log('  1. Run: npm install');
   console.log('  2. Run: npm audit');
   console.log('  3. Run: npm test');
   console.log('  4. Review and commit changes');
-  
+
   process.exit(0);
 } else if (changesDetected) {
   console.log('\n=== No New Changes Needed ===');
   console.log('Existing configuration is sufficient');
   process.exit(0);
 } else {
-  console.log('\n=== No Fixes Needed ===');
-  console.log('All dependencies are secure or require manual review');
+  // No CVE changes needed — but check whether a pre-existing brace-expansion v5 override
+  // is missing its eslint compatibility scoped override (e.g. run after a prior fix pass).
+  eslintBraceFixed = applyEslintBraceExpansionCompat();
+  if (eslintBraceFixed) {
+    const sortedOverrides = {};
+    Object.keys(packageJson.overrides).sort().forEach(key => {
+      sortedOverrides[key] = packageJson.overrides[key];
+    });
+    packageJson.overrides = sortedOverrides;
+    fs.writeFileSync('package.json', JSON.stringify(packageJson, null, 2) + '\n');
+    console.log('\n✅ Updated package.json');
+    console.log('\n📋 Next Steps:');
+    console.log('  1. Run: npm install');
+    console.log('  2. Run: npm audit');
+    console.log('  3. Run: npm test');
+    console.log('  4. Review and commit changes');
+  } else {
+    console.log('\n=== No Fixes Needed ===');
+    console.log('All dependencies are secure or require manual review');
+  }
   process.exit(0);
 }
 
