@@ -1,6 +1,6 @@
 {
   "name": "@izgateway/dependency-scripts",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Shared dependency management and security update scripts for IZGateway projects",
   "main": "index.js",
   "type": "commonjs",
