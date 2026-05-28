@@ -79,8 +79,10 @@ behaviors that consuming projects must adopt as a migration step:
 
 Both behaviors are packaged as reusable workflows in `izg-dependency-scripts` so that
 consuming projects can adopt them with minimal boilerplate. Migration of consuming
-projects (`izg-configuration-console`, `izgw-transform-ui`) is out of scope for this CR
-but will be tracked in their respective repos.
+projects (`izg-configuration-console`, `izgw-transform-ui`) **is in scope** for this CR —
+the CR is not complete until the reusable workflows have been integrated and tested in at
+least one consuming project. The migration changes live in those downstream repos but are
+tracked and verified here.
 
 ## What Changes
 
@@ -110,9 +112,10 @@ but will be tracked in their respective repos.
 - `security-release-notes`: Captures the list of dependency version bumps applied by a
   security update PR and makes them available to the release workflow as a structured
   artifact for inclusion in release notes under a **Security Updates** section.
-- `migration`: Documents the changes consuming projects must make to their CI workflows
-  to adopt `auto-merge-workflow` (on `pull_request`) and `failure-notification`
-  (on `push` after merge).
+- `migration`: Documents and tests the changes consuming projects must make to their CI
+  workflows to adopt `auto-merge-workflow` (on `pull_request`) and `failure-notification`
+  (on `push` after merge). CR is not complete until migration is verified in at least one
+  consuming project.
 
 ### Modified Capabilities
 
@@ -122,9 +125,9 @@ _(none — existing workflows are not changing behavior)_
 
 - **`izg-dependency-scripts`** — adds three new workflow/script files; no changes to
   existing `ci.yml`, `validate.yml`, or the `cve-scan` composite action.
-- **`izg-configuration-console`** (migration, separate CR) — must add a workflow_call step
-  to invoke `auto-merge-security-updates`.
-- **`izgw-transform-ui`** (migration, separate CR) — same as above.
+- **`izg-configuration-console`** (migration, in scope) — must add `pull_request` and
+  `push` workflow steps to invoke the new reusable workflows; verified as part of this CR.
+- **`izgw-transform-ui`** (migration, in scope) — same as above.
 - **Jira API access** — failure notification requires a secret (`JIRA_API_TOKEN`) and
   `JIRA_URL` to be available in the consuming repository's secrets to open IGDD TODO
   tickets programmatically.
