@@ -48,20 +48,21 @@ complexity without benefit.
 ## Summary
 
 IZ Gateway projects run `fix-all-vulnerabilities.js` (from `izg-dependency-scripts`) to
-patch known CVEs by bumping dependency versions. Currently these patches open PRs that
-require a human to review and merge, even when the build is clean. This introduces
-unnecessary delay in getting security patches applied and risks patches languishing
-unmerged.
+patch known CVEs by bumping dependency versions. Currently the `security-updates.yml`
+workflow that orchestrates this process is **copy-pasted verbatim** into every consuming
+project — `izg-configuration-console` and `izg-transformation-ui` have identical files
+differing only by cron offset. Any improvement to the process must be made in every repo
+separately.
 
-This CR introduces a reusable GitHub Actions workflow (hosted in `izg-dependency-scripts`)
-that:
+This CR consolidates the security update process into `izg-dependency-scripts` by:
 
-1. Automatically merges a security-update PR (labeled `security-update`) when all required
-   status checks pass.
-2. Creates an IGDD TODO ticket when a pre-merge build fails, with failure reason and logs.
-3. Creates an IGDD TODO ticket when a post-merge build fails.
-4. Records applied patches so they appear in a **Security Updates** section of the
-   project's release notes.
+1. Centralizing the entire `security-updates.yml` as a reusable `workflow_call` workflow,
+   so consuming projects have a thin caller and updates propagate automatically.
+2. Applying a `security-update` label at PR creation time inside the centralized workflow,
+   providing reliable PR identification that is more tamper-resistant than branch name alone.
+3. Automatically merging a security-update PR when all required status checks pass.
+4. Creating an IGDD TODO ticket when a pre-merge build fails, with failure reason and logs.
+5. Creating an IGDD TODO ticket when a post-merge build fails.
 
 The reusable `fix-all-vulnerabilities` workflow (invoked by consuming projects via
 `workflow_call`) already creates the security-update PRs. This CR adds two new
@@ -73,21 +74,25 @@ behaviors that consuming projects must adopt as a migration step:
 2. **Post-merge checks (`push` / merge trigger)** — GIVEN a merge was completed, WHEN
    downstream checks fail (build, deploy, test), THEN create an IGDD TODO ticket.
 
-Both behaviors are packaged as reusable workflows in `izg-dependency-scripts` so that
-consuming projects can adopt them with minimal boilerplate. Migration of consuming
-projects (`izg-configuration-console`, `izg-transformation-ui`) **is in scope** for this CR —
-the CR is not complete until the reusable workflows have been integrated and tested in at
-least one consuming project. The migration changes live in those downstream repos but are
-tracked and verified here.
+All behaviors are packaged as reusable workflows and composite actions in
+`izg-dependency-scripts`. Migration of consuming projects (`izg-configuration-console`,
+`izg-transformation-ui`) **is in scope** for this CR — the CR is not complete until the
+reusable workflows have been integrated and tested in at least one consuming project. The
+migration changes live in those downstream repos but are tracked and verified here.
 
 ## What Changes
 
-- **NEW** Reusable workflow `auto-merge-security-updates.yml` in
-  `.github/workflows/` — orchestrates auto-merge and failure notification logic.
-- **NEW** Failure notification step — on pre-merge check failure, creates an IGDD TODO
-  Jira ticket with failure details and logs via the `jira-create-issue` composite action.
-- **NEW** Post-merge failure notification step — on post-merge build/deploy/test failure,
-  same Jira ticket creation.
+- **NEW** Reusable `workflow_call` workflow `security-updates.yml` in `.github/workflows/`
+  — centralizes the entire security update process (ncu, override updates, vulnerability
+  fixes, build/test, PR creation) with project-specific steps exposed as inputs. Replaces
+  the copy-pasted `security-updates.yml` in each consuming project.
+- **NEW** `security-update` label applied at PR creation time within the centralized
+  workflow — provides reliable, tamper-resistant PR identification.
+- **NEW** Reusable `workflow_call` workflow `auto-merge-security-updates.yml` —
+  triggers on `pull_request` events for labeled PRs; merges on pass, creates IGDD TODO
+  ticket on failure.
+- **NEW** Post-merge failure detection — triggers on `push` to the default branch after
+  a security-update merge; creates IGDD TODO ticket if build/deploy/test fails.
 - **NEW** Reusable composite action `jira-create-issue` in `.github/actions/` — wraps
   the Jira REST API `curl` call to create a ticket with structured fields (project, issue
   type, summary, description). Accepts `JIRA_URL`, `JIRA_USER`, and `JIRA_API_TOKEN` as
@@ -101,13 +106,18 @@ tracked and verified here.
   > pending a decision on the release notes strategy for these projects. It may be
   > addressed in a follow-on CR.
 - **MIGRATION** Consuming projects (`izg-configuration-console`,
-  `izg-transformation-ui`) must update their CI workflows to call these reusable workflows;
-  migration and verification are in scope for this CR.
+  `izg-transformation-ui`) replace their current `security-updates.yml` with a thin
+  `workflow_call` caller and add the `auto-merge-security-updates` and post-merge
+  failure workflows; migration and verification are in scope for this CR.
 
 ## Capabilities
 
 ### New Capabilities
 
+- `security-updates-workflow`: Reusable `workflow_call` workflow that centralizes the
+  entire security update process. Inputs: `base-branch`, `quality-check-command`,
+  `test-command`, `build-command`, `dependency-scripts-channel`. Secrets: `NPM_TOKEN`,
+  `IZGW_ALL_REPO_ACCESS_TOKEN`. Applies `security-update` label at PR creation.
 - `auto-merge-workflow`: Reusable `workflow_call` workflow triggered on `pull_request`
   events in consuming projects; detects security-update PRs by the `security-update`
   label, merges the PR when all required checks pass, and triggers failure notification
@@ -121,9 +131,9 @@ tracked and verified here.
   `summary`, and `description` as inputs. Replaces the email-to-helpdesk workaround and
   establishes the canonical Jira integration pattern for all IZ Gateway GitHub Actions
   workflows.
-- `migration`: Documents and tests the changes consuming projects must make to their CI
-  workflows to adopt `auto-merge-workflow` (on `pull_request`) and `failure-notification`
-  (on `push` after merge). CR is not complete until migration is verified in at least one
+- `migration`: Replaces the copy-pasted `security-updates.yml` in each consuming project
+  with a thin `workflow_call` caller; adds `auto-merge-security-updates` and post-merge
+  failure workflows. CR is not complete until migration is verified in at least one
   consuming project.
 
 ### Modified Capabilities
@@ -132,10 +142,11 @@ _(none — existing workflows are not changing behavior)_
 
 ## Impact
 
-- **`izg-dependency-scripts`** — adds new workflow/action files; no changes to
-  existing `ci.yml`, `validate.yml`, or the `cve-scan` composite action.
-- **`izg-configuration-console`** (migration, in scope) — must add `pull_request` and
-  `push` workflow steps to invoke the new reusable workflows; verified as part of this CR.
+- **`izg-dependency-scripts`** — adds new reusable workflow and composite action files;
+  no changes to existing `ci.yml`, `validate.yml`, or the `cve-scan` composite action.
+- **`izg-configuration-console`** (migration, in scope) — `security-updates.yml`
+  replaced with thin caller; `auto-merge-security-updates` and post-merge failure
+  workflows added; verified as part of this CR.
 - **`izg-transformation-ui`** (migration, in scope) — same as above.
 - **Jira API access** — `jira-create-issue` composite action requires `JIRA_URL`,
   `JIRA_USER`, and `JIRA_API_TOKEN` secrets in each consuming repository. This replaces
