@@ -89,17 +89,25 @@ tracked and verified here.
 - **NEW** Reusable workflow `auto-merge-security-updates.yml` in
   `.github/workflows/` — orchestrates auto-merge and failure notification logic.
 - **NEW** Failure notification step — on pre-merge check failure, sends email to
-  `support@izgateway.org` and opens an IGDD TODO Jira ticket with logs attached.
+  `support@izgateway.org` and directly creates an IGDD TODO Jira ticket with logs attached
+  via the Jira REST API.
 - **NEW** Post-merge failure notification step — on post-merge build/deploy/test failure,
-  sends email and opens an IGDD TODO Jira ticket.
+  same email + Jira ticket creation.
+- **NEW** Reusable composite action `jira-create-issue` in `.github/actions/` — wraps
+  the Jira REST API `curl` call to create a ticket with structured fields (project, issue
+  type, summary, description). Accepts `JIRA_URL`, `JIRA_USER`, and `JIRA_API_TOKEN` as
+  inputs. **This is the canonical pattern for Jira integration from GitHub Actions across
+  all IZ Gateway projects** — future CRs requiring Jira ticket creation should reuse or
+  extend this action rather than routing through email-to-helpdesk.
 - **NEW** Security patch changelog capture — records the set of bumped versions so
   release note generation can include a Security Updates section.
   > ⚠️ **Open Question:** Neither `izg-configuration-console` nor `izg-transformation-ui`
   > currently generate release notes in any automated way. This capability is deferred
   > pending a decision on the release notes strategy for these projects. It may be
   > addressed in a follow-on CR.
-- **MIGRATION** (out of scope for this CR) Consuming projects (`izg-configuration-console`,
-  `izg-transformation-ui`) must update their CI workflows to call this reusable workflow.
+- **MIGRATION** Consuming projects (`izg-configuration-console`,
+  `izg-transformation-ui`) must update their CI workflows to call these reusable workflows;
+  migration and verification are in scope for this CR.
 
 ## Capabilities
 
@@ -109,10 +117,15 @@ tracked and verified here.
   events in consuming projects; detects security-update PRs by the `security-update`
   label, merges the PR when all required checks pass, and triggers failure notification
   when they fail.
-- `failure-notification`: Sends email to `support@izgateway.org` and creates an IGDD TODO
-  Jira ticket with failure details and logs; invoked by both the auto-merge workflow
-  (pre-merge check failure) and a separate post-merge push trigger (build/deploy/test
-  failure after merge).
+- `failure-notification`: Sends email to `support@izgateway.org` **and** creates an IGDD
+  TODO Jira ticket directly via the `jira-create-issue` composite action; invoked by both
+  the auto-merge workflow (pre-merge check failure) and a separate post-merge push trigger
+  (build/deploy/test failure after merge).
+- `jira-create-issue`: Reusable composite action that creates a Jira issue via the REST
+  API. Accepts `JIRA_URL`, `JIRA_USER`, `JIRA_API_TOKEN`, `project-key`, `issue-type`,
+  `summary`, and `description` as inputs. Replaces the email-to-helpdesk workaround and
+  establishes the canonical Jira integration pattern for all IZ Gateway GitHub Actions
+  workflows.
 - `migration`: Documents and tests the changes consuming projects must make to their CI
   workflows to adopt `auto-merge-workflow` (on `pull_request`) and `failure-notification`
   (on `push` after merge). CR is not complete until migration is verified in at least one
@@ -124,13 +137,14 @@ _(none — existing workflows are not changing behavior)_
 
 ## Impact
 
-- **`izg-dependency-scripts`** — adds three new workflow/script files; no changes to
+- **`izg-dependency-scripts`** — adds new workflow/action files; no changes to
   existing `ci.yml`, `validate.yml`, or the `cve-scan` composite action.
 - **`izg-configuration-console`** (migration, in scope) — must add `pull_request` and
   `push` workflow steps to invoke the new reusable workflows; verified as part of this CR.
 - **`izg-transformation-ui`** (migration, in scope) — same as above.
-- **Jira API access** — failure notification requires a secret (`JIRA_API_TOKEN`) and
-  `JIRA_URL` to be available in the consuming repository's secrets to open IGDD TODO
-  tickets programmatically.
-- **Email delivery** — requires an SMTP or GitHub Actions email action (e.g., via
+- **Jira API access** — `jira-create-issue` composite action requires `JIRA_URL`,
+  `JIRA_USER`, and `JIRA_API_TOKEN` secrets in each consuming repository. This replaces
+  the current email-to-helpdesk ticket creation workaround and becomes the standard
+  pattern going forward.
+- **Email delivery** — requires an SMTP or GitHub Actions email action (e.g.,
   `dawidd6/action-send-mail`) and an appropriate SMTP secret in the repository.
