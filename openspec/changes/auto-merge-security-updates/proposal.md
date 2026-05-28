@@ -24,14 +24,14 @@ release notes.
   **THEN** the PR is automatically merged and closed.
 
 - **WHEN** the checks fail for the build,
-  **THEN** an email is sent to support@izgateway.org for disposition as a TODO on the IGDD
-  Board to investigate the failure, with the reason for failure and logs attached.
+  **THEN** a TODO ticket is created on the IGDD Board to investigate the failure, with the
+  reason for failure and logs attached.
 
 **Post-merge build failure:**
 - **GIVEN** a security update PR has been merged,
   **WHEN** checks finish and there was an error building, deploying, or testing,
-  **THEN** an email is sent to support@izgateway.org for disposition as a TODO on the IGDD
-  Board to investigate why the post-merge build failed.
+  **THEN** a TODO ticket is created on the IGDD Board to investigate why the post-merge
+  build failed.
 
 **Release notes:**
 - **GIVEN** patches are successfully made during the security update process,
@@ -60,10 +60,8 @@ that:
 
 1. Automatically merges a security-update PR (labeled `security-update`) when all required
    status checks pass.
-2. Sends an email to `support@izgateway.org` and creates an IGDD TODO ticket when a
-   pre-merge build fails, attaching failure reason and logs.
-3. Sends an email to `support@izgateway.org` and creates an IGDD TODO ticket when a
-   post-merge build fails.
+2. Creates an IGDD TODO ticket when a pre-merge build fails, with failure reason and logs.
+3. Creates an IGDD TODO ticket when a post-merge build fails.
 4. Records applied patches so they appear in a **Security Updates** section of the
    project's release notes.
 
@@ -72,10 +70,10 @@ The reusable `fix-all-vulnerabilities` workflow (invoked by consuming projects v
 behaviors that consuming projects must adopt as a migration step:
 
 1. **PR checks (`pull_request` trigger)** — GIVEN a PR is opened by the security update
-   process, WHEN checks pass, THEN auto-merge the PR; WHEN checks fail, THEN send the
-   failure alert email.
+   process, WHEN checks pass, THEN auto-merge the PR; WHEN checks fail, THEN create an
+   IGDD TODO ticket.
 2. **Post-merge checks (`push` / merge trigger)** — GIVEN a merge was completed, WHEN
-   downstream checks fail (build, deploy, test), THEN send the alert email.
+   downstream checks fail (build, deploy, test), THEN create an IGDD TODO ticket.
 
 Both behaviors are packaged as reusable workflows in `izg-dependency-scripts` so that
 consuming projects can adopt them with minimal boilerplate. Migration of consuming
@@ -88,11 +86,10 @@ tracked and verified here.
 
 - **NEW** Reusable workflow `auto-merge-security-updates.yml` in
   `.github/workflows/` — orchestrates auto-merge and failure notification logic.
-- **NEW** Failure notification step — on pre-merge check failure, sends email to
-  `support@izgateway.org` and directly creates an IGDD TODO Jira ticket with logs attached
-  via the Jira REST API.
+- **NEW** Failure notification step — on pre-merge check failure, creates an IGDD TODO
+  Jira ticket with failure details and logs via the `jira-create-issue` composite action.
 - **NEW** Post-merge failure notification step — on post-merge build/deploy/test failure,
-  same email + Jira ticket creation.
+  same Jira ticket creation.
 - **NEW** Reusable composite action `jira-create-issue` in `.github/actions/` — wraps
   the Jira REST API `curl` call to create a ticket with structured fields (project, issue
   type, summary, description). Accepts `JIRA_URL`, `JIRA_USER`, and `JIRA_API_TOKEN` as
@@ -117,10 +114,10 @@ tracked and verified here.
   events in consuming projects; detects security-update PRs by the `security-update`
   label, merges the PR when all required checks pass, and triggers failure notification
   when they fail.
-- `failure-notification`: Sends email to `support@izgateway.org` **and** creates an IGDD
-  TODO Jira ticket directly via the `jira-create-issue` composite action; invoked by both
-  the auto-merge workflow (pre-merge check failure) and a separate post-merge push trigger
-  (build/deploy/test failure after merge).
+- `failure-notification`: Creates an IGDD TODO Jira ticket directly via the
+  `jira-create-issue` composite action; invoked by both the auto-merge workflow
+  (pre-merge check failure) and a separate post-merge push trigger (build/deploy/test
+  failure after merge).
 - `jira-create-issue`: Reusable composite action that creates a Jira issue via the REST
   API. Accepts `JIRA_URL`, `JIRA_USER`, `JIRA_API_TOKEN`, `project-key`, `issue-type`,
   `summary`, and `description` as inputs. Replaces the email-to-helpdesk workaround and
@@ -146,5 +143,3 @@ _(none — existing workflows are not changing behavior)_
   `JIRA_USER`, and `JIRA_API_TOKEN` secrets in each consuming repository. This replaces
   the current email-to-helpdesk ticket creation workaround and becomes the standard
   pattern going forward.
-- **Email delivery** — requires an SMTP or GitHub Actions email action (e.g.,
-  `dawidd6/action-send-mail`) and an appropriate SMTP secret in the repository.
