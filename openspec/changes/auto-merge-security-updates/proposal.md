@@ -67,10 +67,18 @@ that:
 4. Records applied patches so they appear in a **Security Updates** section of the
    project's release notes.
 
-The workflow lives in `izg-dependency-scripts` and is consumed by consuming projects
-(initially `izg-configuration-console` and `izgw-transform-ui`) via `workflow_call`.
-Migration steps in those consuming projects are out of scope for this CR but will be
-tracked in their respective repos.
+The workflow lives in `izg-dependency-scripts` and fires via three trigger modes:
+
+- **`schedule`** — runs on the same cadence as the security update process itself, checks
+  for open `security-update`-labeled PRs with all checks passing, and merges them.
+- **`pull_request`** — fires when a PR with the `security-update` label is opened or
+  updated, so a freshly-created security update PR is auto-merged as soon as its checks
+  clear.
+- **`workflow_call`** — allows consuming projects (`izg-configuration-console`,
+  `izgw-transform-ui`) to invoke the workflow from their own CI pipelines.
+
+Migration steps in consuming projects are out of scope for this CR but will be tracked in
+their respective repos.
 
 ## What Changes
 
