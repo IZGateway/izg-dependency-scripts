@@ -19,24 +19,25 @@ release notes.
 ## Success Criteria
 
 **Auto-merge:**
-- **GIVEN** Security Updates has pushed a PR patching dependency versions,
-  **WHEN** all required checks pass for that build,
-  **THEN** the PR is automatically merged and closed.
 
-- **WHEN** the checks fail for the build,
-  **THEN** a TODO ticket is created on the IGDD Board to investigate the failure, with the
-  reason for failure and logs attached.
+**GIVEN** Security Updates has pushed a PR patching dependency versions,
+**WHEN** all required checks pass for that build,
+**THEN** the PR is automatically merged and closed.
+
+**WHEN** the checks fail for the build,
+**THEN** a TODO ticket is created on the IGDD Board to investigate the failure, with the reason for failure and logs attached.
 
 **Post-merge build failure:**
-- **GIVEN** a security update PR has been merged,
-  **WHEN** checks finish and there was an error building, deploying, or testing,
-  **THEN** a TODO ticket is created on the IGDD Board to investigate why the post-merge
-  build failed.
+
+**GIVEN** a security update PR has been merged,
+**WHEN** checks finish and there was an error building, deploying, or testing,
+**THEN** a TODO ticket is created on the IGDD Board to investigate why the post-merge build failed.
 
 **Release notes:**
-- **GIVEN** patches are successfully made during the security update process,
-  **WHEN** release notes are generated,
-  **THEN** a Security Updates section is included that reports what patches were applied.
+
+**GIVEN** patches are successfully made during the security update process,
+**WHEN** release notes are generated,
+**THEN** a Security Updates section is included that reports what patches were applied.
 
 ## Scope Note
 
