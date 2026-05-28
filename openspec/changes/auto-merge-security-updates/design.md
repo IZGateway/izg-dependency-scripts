@@ -76,13 +76,13 @@ release tags in a future CR, callers can be updated to `@vX.Y.Z`.
 
 ### DD-4: PR Identification — Dual Criteria
 
-A PR is a security-update PR if and only if **both** are true:
+A PR is a security update PR if and only if **both** are true:
 
 1. Head branch matches `automated-security-updates-*`
-2. PR carries the label `security-update`
+2. PR carries the label `security update`
 
 The label is applied at PR creation time by the centralized `security-updates.yml`
-(`gh pr create --label security-update`).
+(`gh pr create --label security update`).
 
 **Rationale:** Branch name alone is guessable — any developer could push a branch named
 `automated-security-updates-manual-test` and trigger auto-merge. Label alone could be
@@ -134,7 +134,7 @@ re-evaluate check status after each check completes.
 ### DD-7: Post-Merge Failure Detection
 
 The post-merge failure workflow fires on `push` to the default branch. It detects
-whether the triggering commit is a security-update merge by matching the commit message
+whether the triggering commit is a security update merge by matching the commit message
 against the pattern `chore(deps): security and dependency updates`.
 
 ```yaml
@@ -215,22 +215,21 @@ the `jq` construction above handles that correctly.
 
 ### DD-10: Migration Sequence
 
-Migration for each consuming project follows this order to prevent a failed first run:
+Migration for each consuming project follows this order:
 
-1. Create `security-update` label in the repository
-   (`gh label create "security-update" --color "ee0701" --description "Automated security dependency update PR"`)
-2. Add `JIRA_URL`, `JIRA_USER`, `JIRA_API_TOKEN` repository secrets
-3. Replace `security-updates.yml` with thin caller
-4. Add `auto-merge-security-updates.yml` thin caller
-5. Add `post-merge-failure.yml` thin caller
-6. Open a PR, get it reviewed, merge to default branch
-7. Trigger a manual `workflow_dispatch` run to verify end-to-end PR creation and labeling
-8. Verify auto-merge fires (or manually test with a dummy `security-update`-labeled PR)
+1. Add `JIRA_URL`, `JIRA_USER`, `JIRA_API_TOKEN` repository secrets
+2. Replace `security-updates.yml` with thin caller
+3. Add `auto-merge-security-updates.yml` thin caller
+4. Add `post-merge-failure.yml` thin caller
+5. Open a PR, get it reviewed, merge to default branch
+6. Trigger a manual `workflow_dispatch` run to verify end-to-end PR creation and labeling
+   > The `security update` label (`#2ea7e0`) is created automatically on first run by the
+   > centralized workflow (`gh label create ... || true`) — no manual label creation needed.
+7. Verify auto-merge fires (or manually test with a dummy `security update`-labeled PR)
 
-**Rationale:** Label and secrets must exist before the first automated run; creating
-them after deploying the workflows risks a failed run that generates a confusing error
-before any useful work is done. The manual `workflow_dispatch` verification step catches
-auth or configuration issues in a controlled way before the nightly schedule fires.
+**Rationale:** Secrets must exist before the first automated run; deploying the workflows
+without them risks a confusing auth failure before any useful work is done. Label creation
+is handled by the workflow itself — one less manual step per repository.
 
 **Migration order:** `izg-configuration-console` first; `izg-transformation-ui` second.
 `izg-configuration-console` is the more complex project (has both quality-check and

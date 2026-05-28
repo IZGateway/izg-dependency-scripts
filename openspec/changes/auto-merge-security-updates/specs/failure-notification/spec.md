@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Creates an IGDD TODO Jira ticket when a security-update workflow fails — either
+Creates an IGDD TODO Jira ticket when a security update workflow fails — either
 before merge (required checks fail on the PR) or after merge (build, deploy, or test
 fails on the default branch after the PR is merged).
 
@@ -10,7 +10,7 @@ fails on the default branch after the PR is merged).
 
 ### Requirement: Pre-Merge Failure Ticket
 
-GIVEN a security-update PR has been identified by the `auto-merge-workflow`,<br>
+GIVEN a security update PR has been identified by the `auto-merge-workflow`,<br>
 WHEN one or more required status checks report `failure` or `cancelled`,<br>
 THEN a Jira ticket is created in the IGDD project with:
 
@@ -23,7 +23,7 @@ THEN a Jira ticket is created in the IGDD project with:
   - Context label: `pre-merge`
 
 #### Scenario: Pre-merge check failure
-WHEN a required check on a security-update PR reports `failure`<br>
+WHEN a required check on a security update PR reports `failure`<br>
 AND the `failure-notification` workflow is called with context `pre-merge`<br>
 THEN a single IGDD TODO ticket is created with pre-merge context in the description.<br>
 No merge attempt is made.
@@ -37,7 +37,7 @@ created per failing check.
 
 ### Requirement: Post-Merge Failure Ticket
 
-GIVEN a security-update PR has been merged to the default branch,<br>
+GIVEN a security update PR has been merged to the default branch,<br>
 WHEN a `push` event triggers CI on the default branch<br>
 AND the build, deploy, or test job fails,<br>
 THEN a Jira ticket is created in the IGDD project with:
@@ -52,13 +52,13 @@ THEN a Jira ticket is created in the IGDD project with:
   - Context label: `post-merge`
 
 #### Scenario: Post-merge build failure
-WHEN the CI pipeline on the default branch fails after a security-update merge<br>
-AND the head commit message matches the security-update commit pattern<br>
+WHEN the CI pipeline on the default branch fails after a security update merge<br>
+AND the head commit message matches the security update commit pattern<br>
 THEN a single IGDD TODO ticket is created with post-merge context.
 
-#### Scenario: Post-merge failure on non-security-update commit
+#### Scenario: Post-merge failure on non-security update commit
 WHEN the CI pipeline on the default branch fails<br>
-AND the head commit is NOT a security-update merge (pattern: `chore(deps): security
+AND the head commit is NOT a security update merge (pattern: `chore(deps): security
 and dependency updates`)<br>
 THEN no ticket is created by this workflow; the failure is handled by normal CI
 notification channels.

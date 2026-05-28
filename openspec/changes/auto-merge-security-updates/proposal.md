@@ -39,7 +39,7 @@ release notes.
 ## Scope Note
 
 This CR covers PRs created by the IZ Gateway security update automation
-(`fix-all-vulnerabilities.js`), identified by a `security-update` label applied at
+(`fix-all-vulnerabilities.js`), identified by a `security update` label applied at
 PR creation time. **Dependabot PRs are explicitly out of scope** — Dependabot runs
 with a restricted token that prevents it from triggering other workflows, and GitHub
 provides its own native auto-merge mechanism for those. Mixing the two would add
@@ -58,14 +58,14 @@ This CR consolidates the security update process into `izg-dependency-scripts` b
 
 1. Centralizing the entire `security-updates.yml` as a reusable `workflow_call` workflow,
    so consuming projects have a thin caller and updates propagate automatically.
-2. Applying a `security-update` label at PR creation time inside the centralized workflow,
+2. Applying a `security update` label at PR creation time inside the centralized workflow,
    providing reliable PR identification that is more tamper-resistant than branch name alone.
-3. Automatically merging a security-update PR when all required status checks pass.
+3. Automatically merging a security update PR when all required status checks pass.
 4. Creating an IGDD TODO ticket when a pre-merge build fails, with failure reason and logs.
 5. Creating an IGDD TODO ticket when a post-merge build fails.
 
 The reusable `fix-all-vulnerabilities` workflow (invoked by consuming projects via
-`workflow_call`) already creates the security-update PRs. This CR adds two new
+`workflow_call`) already creates the security update PRs. This CR adds two new
 behaviors that consuming projects must adopt as a migration step:
 
 1. **PR checks (`pull_request` trigger)** — GIVEN a PR is opened by the security update
@@ -86,13 +86,13 @@ migration changes live in those downstream repos but are tracked and verified he
   — centralizes the entire security update process (ncu, override updates, vulnerability
   fixes, build/test, PR creation) with project-specific steps exposed as inputs. Replaces
   the copy-pasted `security-updates.yml` in each consuming project.
-- **NEW** `security-update` label applied at PR creation time within the centralized
+- **NEW** `security update` label applied at PR creation time within the centralized
   workflow — provides reliable, tamper-resistant PR identification.
 - **NEW** Reusable `workflow_call` workflow `auto-merge-security-updates.yml` —
   triggers on `pull_request` events for labeled PRs; merges on pass, creates IGDD TODO
   ticket on failure.
 - **NEW** Post-merge failure detection — triggers on `push` to the default branch after
-  a security-update merge; creates IGDD TODO ticket if build/deploy/test fails.
+  a security update merge; creates IGDD TODO ticket if build/deploy/test fails.
 - **NEW** Reusable composite action `jira-create-issue` in `.github/actions/` — wraps
   the Jira REST API `curl` call to create a ticket with structured fields (project, issue
   type, summary, description). Accepts `JIRA_URL`, `JIRA_USER`, and `JIRA_API_TOKEN` as
@@ -117,9 +117,9 @@ migration changes live in those downstream repos but are tracked and verified he
 - `security-updates-workflow`: Reusable `workflow_call` workflow that centralizes the
   entire security update process. Inputs: `base-branch`, `quality-check-command`,
   `test-command`, `build-command`, `dependency-scripts-channel`. Secrets: `NPM_TOKEN`,
-  `IZGW_ALL_REPO_ACCESS_TOKEN`. Applies `security-update` label at PR creation.
+  `IZGW_ALL_REPO_ACCESS_TOKEN`. Applies `security update` label at PR creation.
 - `auto-merge-workflow`: Reusable `workflow_call` workflow triggered on `pull_request`
-  events in consuming projects; detects security-update PRs by the `security-update`
+  events in consuming projects; detects security update PRs by the `security update`
   label, merges the PR when all required checks pass, and triggers failure notification
   when they fail.
 - `failure-notification`: Creates an IGDD TODO Jira ticket directly via the

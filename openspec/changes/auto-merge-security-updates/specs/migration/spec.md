@@ -52,12 +52,12 @@ It passes:
 - `IZGW_ALL_REPO_ACCESS_TOKEN` secret (for merge operations)
 - `JIRA_URL`, `JIRA_USER`, `JIRA_API_TOKEN` secrets (for failure notifications)
 
-#### Scenario: Security-update PR passes all checks
-WHEN all required checks pass on a security-update PR in the consuming project<br>
+#### Scenario: security update PR passes all checks
+WHEN all required checks pass on a security update PR in the consuming project<br>
 THEN the auto-merge workflow merges the PR automatically.
 
-#### Scenario: Security-update PR fails a check
-WHEN a required check fails on a security-update PR<br>
+#### Scenario: security update PR fails a check
+WHEN a required check fails on a security update PR<br>
 THEN the auto-merge workflow creates an IGDD TODO Jira ticket and takes no merge action.
 
 ---
@@ -67,15 +67,15 @@ THEN the auto-merge workflow creates an IGDD TODO Jira ticket and takes no merge
 Each consuming project must add a workflow (e.g.,
 `security-update-post-merge-failure.yml`) that fires on `push` to the default branch
 and invokes the `failure-notification` reusable workflow when:
-1. The triggering commit message matches the security-update commit pattern
+1. The triggering commit message matches the security update commit pattern
    (`chore(deps): security and dependency updates`), AND
 2. A subsequent CI job (build, deploy, or test) on that branch fails.
 
 The workflow passes `JIRA_URL`, `JIRA_USER`, `JIRA_API_TOKEN`, and branch context as
 inputs/secrets.
 
-#### Scenario: Post-merge CI failure on security-update commit
-WHEN the default branch CI fails after a security-update merge<br>
+#### Scenario: Post-merge CI failure on security update commit
+WHEN the default branch CI fails after a security update merge<br>
 THEN the post-merge failure workflow creates an IGDD TODO Jira ticket with the
 failing job name and run URL.
 
@@ -86,9 +86,9 @@ failing job name and run URL.
 Before the first run of the migrated workflows in a consuming project, the following
 must be in place:
 
-1. **`security-update` label** — the label must exist in the consuming repository.
-   Create it via `gh label create "security-update" --color "ee0701" --description
-   "Automated security dependency update PR" --repo <owner>/<repo>`.
+1. **`security update` label** — created automatically by the centralized
+   `security-updates.yml` workflow on first run (idempotent `gh label create ... || true`).
+   No manual label creation required.
 2. **Repository secrets** — `JIRA_URL`, `JIRA_USER`, and `JIRA_API_TOKEN` must be
    set in the consuming repository's Actions secrets.
 3. **Branch protection** — the consuming project's default branch protection rules
@@ -96,13 +96,13 @@ must be in place:
    PR must be configured for auto-merge after the required checks are defined).
 
 #### Scenario: Label missing before first run
-WHEN the thin caller creates a security-update PR<br>
-AND the `security-update` label does not exist in the repository<br>
-THEN `gh pr create --label security-update` fails; the prerequisite checklist must
-ensure label creation before the first automated run.
+WHEN the thin caller triggers `security-updates.yml` for the first time<br>
+AND the `security update` label does not exist in the repository<br>
+THEN the workflow's `gh label create ... || true` step creates it before `gh pr create`
+runs; no manual intervention is needed.
 
 #### Scenario: Jira secrets missing before first run
-WHEN a required check fails on a security-update PR<br>
+WHEN a required check fails on a security update PR<br>
 AND `JIRA_API_TOKEN` is not set in the repository<br>
 THEN the `failure-notification` workflow fails with an authentication error; the
 prerequisite checklist must ensure secrets are configured before migration.
@@ -114,15 +114,15 @@ prerequisite checklist must ensure secrets are configured before migration.
 Migration for each consuming project is not complete until the following are verified:
 
 1. A scheduled (or manually triggered) run of the thin caller successfully creates a
-   `security-update`-labeled PR in the consuming project.
-2. A test PR carrying the `security-update` label is either auto-merged (if checks
+   `security update`-labeled PR in the consuming project.
+2. A test PR carrying the `security update` label is either auto-merged (if checks
    pass) or produces an IGDD TODO ticket (if checks are forced to fail).
 3. All existing nightly and CI workflows in the consuming project continue to function
    without regression.
 
 #### Scenario: Migration verified in izg-configuration-console
-WHEN a security-update PR is created via the thin caller in `izg-configuration-console`<br>
-AND the PR carries the `security-update` label<br>
+WHEN a security update PR is created via the thin caller in `izg-configuration-console`<br>
+AND the PR carries the `security update` label<br>
 AND the auto-merge workflow merges or notifies correctly<br>
 THEN `izg-configuration-console` migration is marked complete.
 

@@ -4,7 +4,7 @@
 
 Reusable `workflow_call` workflow that centralizes the entire security update process
 — ncu, override updates, vulnerability fixes, build/test, PR creation, and
-`security-update` label application — replacing the copy-pasted `security-updates.yml`
+`security update` label application — replacing the copy-pasted `security-updates.yml`
 in each consuming project.
 
 ## Requirements
@@ -89,7 +89,7 @@ The workflow runs the following steps in order when invoked:
 18. **Generate PR body** — includes package diff, checklist, workflow run link.
 19. **Push branch**.
 20. **Create PR** — using `IZGW_ALL_REPO_ACCESS_TOKEN`; targets `base-branch` input;
-    title `chore(deps): security and dependency updates`; applies label `security-update`.
+    title `chore(deps): security and dependency updates`; applies label `security update`.
 21. **Upload npm logs on failure** — `actions/upload-artifact@v4`; 7-day retention.
 
 #### Scenario: No dependency changes found
@@ -100,7 +100,7 @@ writing a "No Dependency Updates Available" step summary.
 #### Scenario: Changes found, all checks pass
 WHEN at least one change is detected<br>
 AND quality check, tests, and build all succeed<br>
-THEN a PR is created targeting `base-branch`, carrying the `security-update` label.
+THEN a PR is created targeting `base-branch`, carrying the `security update` label.
 
 #### Scenario: Changes found, a check fails
 WHEN a build or quality check step fails<br>
@@ -111,19 +111,24 @@ THEN the workflow fails, npm logs are uploaded as an artifact, and no PR is crea
 
 ### Requirement: PR Label Application
 
-The workflow applies the `security-update` label to the PR at creation time using the
-`--label security-update` flag on `gh pr create`. This label must exist in the
-consuming repository before the workflow runs.
+The workflow ensures the `security update` label exists and applies it to the PR at
+creation time. A dedicated step runs `gh label create` before `gh pr create`, using
+`|| true` to make it idempotent — if the label already exists the step succeeds silently.
 
-The `migration` spec covers label pre-creation as a migration prerequisite.
+```bash
+gh label create "security update" \
+  --color "#2ea7e0" \
+  --description "Automated security dependency update PR" || true
+```
 
-#### Scenario: Label exists in consuming repo
-WHEN `gh pr create --label security-update` is called<br>
-AND the `security-update` label exists in the repository<br>
-THEN the PR is created with the label applied.
+This eliminates label creation as a manual migration prerequisite.
 
-#### Scenario: Label does not exist in consuming repo
-WHEN `gh pr create --label security-update` is called<br>
-AND the `security-update` label does not exist in the repository<br>
-THEN `gh pr create` fails with a label-not-found error; the migration checklist must
-ensure label creation before the first workflow run.
+#### Scenario: Label does not yet exist
+WHEN the workflow runs for the first time in a consuming repository<br>
+AND the `security update` label does not exist<br>
+THEN `gh label create` creates it; `gh pr create --label "security update"` succeeds.
+
+#### Scenario: Label already exists
+WHEN the workflow runs and the `security update` label already exists<br>
+THEN `gh label create ... || true` exits successfully without error; `gh pr create`
+applies the existing label.
