@@ -38,6 +38,15 @@ release notes.
   **WHEN** release notes are generated,
   **THEN** a Security Updates section is included that reports what patches were applied.
 
+## Scope Note
+
+This CR covers PRs created by the IZ Gateway security update automation
+(`fix-all-vulnerabilities.js`), identified by a `security-update` label applied at
+PR creation time. **Dependabot PRs are explicitly out of scope** — Dependabot runs
+with a restricted token that prevents it from triggering other workflows, and GitHub
+provides its own native auto-merge mechanism for those. Mixing the two would add
+complexity without benefit.
+
 ## Summary
 
 IZ Gateway projects run `fix-all-vulnerabilities.js` (from `izg-dependency-scripts`) to
@@ -49,7 +58,8 @@ unmerged.
 This CR introduces a reusable GitHub Actions workflow (hosted in `izg-dependency-scripts`)
 that:
 
-1. Automatically merges a security update PR when all required status checks pass.
+1. Automatically merges a security-update PR (labeled `security-update`) when all required
+   status checks pass.
 2. Sends an email to `support@izgateway.org` and creates an IGDD TODO ticket when a
    pre-merge build fails, attaching failure reason and logs.
 3. Sends an email to `support@izgateway.org` and creates an IGDD TODO ticket when a
@@ -80,8 +90,8 @@ tracked in their respective repos.
 ### New Capabilities
 
 - `auto-merge-workflow`: Reusable `workflow_call` workflow that merges a security-update
-  PR when required checks pass; identifies security-update PRs by label or author
-  (e.g., `dependabot[bot]` or a `security-update` label).
+  PR when required checks pass; identifies security-update PRs by the `security-update`
+  label applied at PR creation time by the IZ Gateway security update automation.
 - `failure-notification`: Sends email to `support@izgateway.org` and creates an IGDD TODO
   Jira ticket with failure details and logs, triggered by both pre-merge check failures and
   post-merge build/deploy/test failures.
