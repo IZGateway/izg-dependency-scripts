@@ -67,18 +67,20 @@ that:
 4. Records applied patches so they appear in a **Security Updates** section of the
    project's release notes.
 
-The workflow lives in `izg-dependency-scripts` and fires via three trigger modes:
+The reusable `fix-all-vulnerabilities` workflow (invoked by consuming projects via
+`workflow_call`) already creates the security-update PRs. This CR adds two new
+behaviors that consuming projects must adopt as a migration step:
 
-- **`schedule`** — runs on the same cadence as the security update process itself, checks
-  for open `security-update`-labeled PRs with all checks passing, and merges them.
-- **`pull_request`** — fires when a PR with the `security-update` label is opened or
-  updated, so a freshly-created security update PR is auto-merged as soon as its checks
-  clear.
-- **`workflow_call`** — allows consuming projects (`izg-configuration-console`,
-  `izgw-transform-ui`) to invoke the workflow from their own CI pipelines.
+1. **PR checks (`pull_request` trigger)** — GIVEN a PR is opened by the security update
+   process, WHEN checks pass, THEN auto-merge the PR; WHEN checks fail, THEN send the
+   failure alert email.
+2. **Post-merge checks (`push` / merge trigger)** — GIVEN a merge was completed, WHEN
+   downstream checks fail (build, deploy, test), THEN send the alert email.
 
-Migration steps in consuming projects are out of scope for this CR but will be tracked in
-their respective repos.
+Both behaviors are packaged as reusable workflows in `izg-dependency-scripts` so that
+consuming projects can adopt them with minimal boilerplate. Migration of consuming
+projects (`izg-configuration-console`, `izgw-transform-ui`) is out of scope for this CR
+but will be tracked in their respective repos.
 
 ## What Changes
 
@@ -97,15 +99,20 @@ their respective repos.
 
 ### New Capabilities
 
-- `auto-merge-workflow`: Reusable `workflow_call` workflow that merges a security-update
-  PR when required checks pass; identifies security-update PRs by the `security-update`
-  label applied at PR creation time by the IZ Gateway security update automation.
+- `auto-merge-workflow`: Reusable `workflow_call` workflow triggered on `pull_request`
+  events in consuming projects; detects security-update PRs by the `security-update`
+  label, merges the PR when all required checks pass, and triggers failure notification
+  when they fail.
 - `failure-notification`: Sends email to `support@izgateway.org` and creates an IGDD TODO
-  Jira ticket with failure details and logs, triggered by both pre-merge check failures and
-  post-merge build/deploy/test failures.
+  Jira ticket with failure details and logs; invoked by both the auto-merge workflow
+  (pre-merge check failure) and a separate post-merge push trigger (build/deploy/test
+  failure after merge).
 - `security-release-notes`: Captures the list of dependency version bumps applied by a
   security update PR and makes them available to the release workflow as a structured
   artifact for inclusion in release notes under a **Security Updates** section.
+- `migration`: Documents the changes consuming projects must make to their CI workflows
+  to adopt `auto-merge-workflow` (on `pull_request`) and `failure-notification`
+  (on `push` after merge).
 
 ### Modified Capabilities
 
