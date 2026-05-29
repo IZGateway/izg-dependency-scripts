@@ -10,26 +10,66 @@ genuinely redundant.
 
 The script SHALL determine whether an override is still required by observing what
 npm would resolve **in the absence of that override**, not by inspecting versions
-already resolved in `package-lock.json` while the override is active. An override
-SHALL only be considered removable when the natural-resolution version (the version
-npm would pick with the override removed) is greater than or equal to the override
-version for every transitive resolution in the dependency graph.
+already resolved in `package-lock.json` while the override is active.
+
+The script SHALL compare resolutions **per dependency-graph path**, considering both
+the trial (override-removed) lockfile and the consumer's current (override-active)
+lockfile. An override counts as still required (and SHALL be `kept`) if removing it
+causes a **regression**, defined as any of:
+
+- A path that exists in both lockfiles, whose **current** version was at or above the
+  override floor and whose **trial** version is below the floor;
+- A **new** path introduced in the trial (absent in the current lockfile, i.e., the
+  override was preventing that path's existence) whose trial version is below the floor; **or**
+- A **disappeared** path — a path whose current version was at or above the floor
+  but is absent in the trial lockfile — **when** the trial lockfile still contains at
+  least one below-floor instance of the package elsewhere. This catches the case
+  where removing the override causes npm to deduplicate consumers of the package
+  down to a low-version path that was previously coexisting (e.g., a nested-override
+  path at a lower major).
+
+Paths whose current version is already below the floor (because of another override
+or intentional pinning by a parent dependency) are **not** treated as regressions —
+those paths were not what this override was protecting. A disappeared at-or-above-floor
+path with **no** below-floor remnants in the trial is also not a regression — the
+consumers there either dropped the dependency entirely or moved to other at-or-above-floor
+instances.
 
 #### Scenario: Exact-pin override is preserved when natural resolution would drop below the floor
 
 - **WHEN** a consumer's `package.json` contains `"overrides": { "postcss": "8.5.15" }`
-  and at least one transitive dependent's semver range would otherwise resolve `postcss`
-  below `8.5.15`
+  and at least one path where `postcss` currently resolves at or above `8.5.15`
+  would resolve below `8.5.15` in the trial lockfile
 - **THEN** the script SHALL keep the override in `package.json` and SHALL classify it
   as `kept` in its per-override report
 
-#### Scenario: Override is removed when natural resolution already satisfies the floor
+#### Scenario: Override is removed when no path regresses
 
-- **WHEN** a consumer's `package.json` contains an override whose natural-resolution
-  version (with the override removed) is already `>=` the override version for every
-  resolution of that package
+- **WHEN** a consumer's `package.json` contains an override and, for every path where
+  the overridden package resolves in the trial lockfile, either the trial version is
+  at or above the override floor or the same path was already below the floor in the
+  current lockfile
 - **THEN** the script SHALL remove the override from `package.json` and SHALL classify
   it as `removed` in its per-override report
+
+#### Scenario: Coexisting nested override does not cause false `kept`
+
+- **WHEN** a consumer's `package.json` contains both a top-level override `"ajv": "8.20.0"`
+  and a nested override `"eslint": { "ajv": "^6.14.0" }`, and the trial removes only the
+  top-level override
+- **THEN** the script SHALL NOT count the eslint-nested `ajv@6.x` path as a regression
+  (it was already below `8.20.0` in the current lockfile by design), and the script
+  SHALL classify the top-level `ajv` override as `kept` only if some **other** path
+  where `ajv` was at or above `8.20.0` would regress in the trial
+
+#### Scenario: Dedup-down disappearance is caught as a regression
+
+- **WHEN** the consumer's current lockfile has a path where the overridden package
+  resolves at or above the floor (e.g., `node_modules/ajv: 8.20.0`), and the trial
+  lockfile lacks that path entirely while still containing at least one below-floor
+  instance of the package (e.g., a nested-override `node_modules/eslint/node_modules/ajv: 6.15.0`)
+- **THEN** the script SHALL classify the override as `kept`, recognizing that the
+  protected path's consumers have likely been deduplicated to the below-floor instance
 
 #### Scenario: Lockfile-only inspection is insufficient
 

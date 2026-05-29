@@ -250,25 +250,49 @@ Found 13 vulnerable packages
 
 ### `test-overrides`
 
-**Analyzes and removes unnecessary overrides**
+**Analyzes and removes unnecessary overrides — without weakening security posture.**
 
-- Checks if all resolved versions meet override requirements
-- Removes obsolete overrides that are no longer needed
-- Helps keep package.json clean
+For each entry in `package.json` `overrides`, the script trial-removes the override in
+a scratch copy of your tree (under `os.tmpdir()`), runs `npm install --package-lock-only`,
+and inspects the regenerated lockfile. If the natural resolution (what npm would pick
+*without* the override) is at or above the override floor, the override is removed.
+If the natural resolution would drop below the floor, the override is kept. The
+consumer's working tree is not modified except for `package.json` (and only when
+overrides were removed).
+
+Each override receives one of three outcomes:
+
+| Outcome   | Meaning                                                                |
+| --------- | ---------------------------------------------------------------------- |
+| `kept`    | Removing the override would lower a resolved version. Override stays.  |
+| `removed` | Natural resolution already meets the floor (or the package is no longer in the graph). |
+| `skipped` | The trial could not be completed (npm error, registry failure, non-string override, etc.). Override stays by default. |
+
+**Exit codes:**
+
+| Code | Meaning                                                                                          |
+| ---- | ------------------------------------------------------------------------------------------------ |
+| `0`  | Evaluation completed for every override. Some, all, or none may have been removed.               |
+| `1`  | Pre-evaluation error (missing/malformed `package.json` or `package-lock.json`, scratch setup failure). |
+| `2`  | Evaluation completed, but at least one override ended in `skipped`. Calling workflows should treat as visible-but-non-fatal. |
 
 **Example:**
 ```bash
 $ test-overrides
 
-Analyzing overrides against resolved versions...
+Analyzing overrides via trial removal in a scratch tree...
+
+Checking override: postcss@8.5.15
+  ✓ Kept: natural resolution would drop to 8.4.31
 
 Checking override: prismjs@1.30.0
-  ✓ All resolved versions (min: 1.30.0) meet or exceed override 1.30.0
+  ✗ Removed: natural resolution: 1.30.0
 
-=== Removing unnecessary overrides ===
-  Removing: prismjs
+Updated package.json — removed 1 override(s)
 
-✓ Updated package.json
+=== Override evaluation summary ===
+  postcss@8.5.15  kept      (natural resolution would drop to 8.4.31)
+  prismjs@1.30.0  removed   (natural resolution: 1.30.0)
 ```
 
 ### `update-overrides`

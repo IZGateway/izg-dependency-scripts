@@ -84,9 +84,15 @@ The script SHALL copy the consumer's `.npmrc` (if present in CWD) into the scrat
 **Alternative considered:**
 - *Run the trial in CWD instead of a scratch dir* (so `.npmrc`, env, and npm config all just work). Rejected — it would write `package-lock.json` (or worse, `node_modules`) into the consumer's tree, violating the "no working-tree pollution" requirement.
 
-### D6: Reuse existing lockfile traversal; keep `findAllResolvedVersions` but call it on the *scratch* lockfile
+### D6: Reuse existing lockfile traversal; add a path-keyed traversal for per-path comparison
 
-The current helper that walks `package-lock.json` for resolved versions of a given package is still useful — we just point it at the scratch lockfile produced by the trial install rather than the consumer's lockfile. The lockfile-version compatibility logic (v1 `dependencies` vs. v2+ `packages`) carries over unchanged.
+The existing `findAllResolvedVersions` helper that walks `package-lock.json` for resolved versions of a given package stays — it still answers the "is this package in the graph at all?" question and serves as a fallback for v1 lockfiles that lack the `packages` key.
+
+A second helper, `findResolvedByPath`, returns a `{ path: version }` map for v3-style lockfiles (the universal modern format). This is the data the per-path comparison in [spec.md → "Removal decisions SHALL be based on natural resolution"](./specs/override-evaluation/spec.md) requires: for each path where the overridden package resolves in the trial lockfile, we look up the same path in the consumer's current lockfile and decide whether the trial represents a regression *at that path*.
+
+The path-keyed comparison is what lets us avoid false `kept` outcomes when an unrelated nested override pins a sub-tree below the floor on purpose — the eslint-nested `ajv@6.x` next to a top-level `ajv@8.20.0` override is a real consumer shape, not an edge case.
+
+The v1 fallback path keeps the old aggregate-version logic (no path keys available), accepting that v1 consumers will see the original failure mode if they have nested overrides — modern npm has not produced v1 lockfiles since npm 6, so this is acceptable.
 
 ### D7: Per-override outcome reporting
 
