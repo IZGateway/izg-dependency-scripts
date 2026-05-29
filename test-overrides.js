@@ -114,11 +114,20 @@ function evaluateOverride(pkg, overrideVersion, packageJson, consumerLock, cwd) 
   }
 
   let scratchDir;
+  let scratchDir;
   try {
-    scratchDir = createScratchDir();
-    activeScratchDir = scratchDir;
-    seedScratch(scratchDir, cwd);
+    try {
+      scratchDir = createScratchDir();
+      activeScratchDir = scratchDir;
+      seedScratch(scratchDir, cwd);
+    } catch (e) {
+      if (scratchDir) cleanupScratch(scratchDir);
+      activeScratchDir = null;
+      console.error(`Scratch setup failed: ${e.message}`);
+      process.exit(EXIT_PRE_EVAL_ERROR);
+    }
 
+    const scratchPkgPath = path.join(scratchDir, 'package.json');
     const scratchPkgPath = path.join(scratchDir, 'package.json');
     const scratchPkg = JSON.parse(fs.readFileSync(scratchPkgPath, 'utf8'));
     delete scratchPkg.overrides[pkg];
