@@ -264,8 +264,8 @@ Each override receives one of three outcomes:
 
 | Outcome   | Meaning                                                                |
 | --------- | ---------------------------------------------------------------------- |
-| `kept`    | Removing the override would lower a resolved version. Override stays.  |
-| `removed` | Natural resolution already meets the floor (or the package is no longer in the graph). |
+| `kept`    | Removing the override would cause at least one resolved instance to fall below the override floor. Override stays. |
+| `removed` | Natural resolution already meets the floor everywhere (or the package is no longer in the graph). |
 | `skipped` | The trial could not be completed (npm error, registry failure, non-string override, etc.). Override stays by default. |
 
 **Exit codes:**
