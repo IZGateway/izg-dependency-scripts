@@ -120,8 +120,8 @@ catches the reintroduced CVE — and only if SCA happens to flag that exact vers
 
 **APIs / dependencies:**
 - No new runtime npm dependencies expected (uses existing `semver` peer dep, `fs`,
-  `child_process.execSync`, and `os.tmpdir()`).
-- No changes to peer-dep declarations or to the `bin` mapping in `package.json`.
+  `child_process.spawnSync`, and `os.tmpdir()`).
+- No changes to peer-dep declarations or to the `bin` mapping in `package.json`. 
 - No changes to the release pipeline — published the usual way via `ci.yml` on merge to `main`.
 
 **Release coordination:**
