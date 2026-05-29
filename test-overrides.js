@@ -55,6 +55,24 @@ function main() {
       continue;
     }
 
+    // This script only supports flat overrides keyed by a plain package name.
+    // Selector keys like `foo@^1.2.3` or `a>b` cannot be mapped to lockfile package names safely.
+    const isScoped = pkg.startsWith('@');
+    const hasSelectorKey =
+      pkg.includes('>') ||
+      (!isScoped && pkg.includes('@')) ||
+      (isScoped && pkg.indexOf('@', pkg.indexOf('/') + 1) !== -1);
+    if (hasSelectorKey) {
+      decisions.push({
+        pkg,
+        overrideVersion: overrideValue,
+        outcome: 'skipped',
+        reason: 'override key uses selector syntax (e.g. pkg@range or parent>child); only plain package-name keys are supported',
+      });
+      console.log('  ⊘ Skipped: override key uses selector syntax (not supported)\n');
+      continue;
+    }
+
     const decision = evaluateOverride(pkg, overrideValue, packageJson, consumerLock, cwd);
     decisions.push(decision);
     logDecision(decision);
