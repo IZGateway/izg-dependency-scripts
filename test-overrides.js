@@ -114,7 +114,6 @@ function evaluateOverride(pkg, overrideVersion, packageJson, consumerLock, cwd) 
   }
 
   let scratchDir;
-  let scratchDir;
   try {
     try {
       scratchDir = createScratchDir();
@@ -127,7 +126,6 @@ function evaluateOverride(pkg, overrideVersion, packageJson, consumerLock, cwd) 
       process.exit(EXIT_PRE_EVAL_ERROR);
     }
 
-    const scratchPkgPath = path.join(scratchDir, 'package.json');
     const scratchPkgPath = path.join(scratchDir, 'package.json');
     const scratchPkg = JSON.parse(fs.readFileSync(scratchPkgPath, 'utf8'));
     delete scratchPkg.overrides[pkg];
