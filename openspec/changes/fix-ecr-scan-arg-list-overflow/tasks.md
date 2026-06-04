@@ -37,7 +37,7 @@
 
 ## 5. Release
 
-- [ ] 5.1 Open a PR from `IGDD-2563_ecr-scan-jq-change` to `main` with label `bump:patch`. PR title and body should reference IGDD-2563 and the failing `izg-transformation-ui:0.16.0` run as the motivating reproducer
+- [x] 5.1 Open a PR from `IGDD-2563_ecr-scan-jq-change` to `main` with label `bump:patch`. PR title and body should reference IGDD-2563 and the failing `izg-transformation-ui:0.16.0` run as the motivating reproducer — *PR #7 opened. The `bump:patch` / `bump:minor` / `bump:major` labels didn't exist on the repo (the CI's bump-label parser was wired up but the labels themselves had never been created), so they were created with green/yellow/red colors and `bump:patch` applied to PR #7.*
 - [ ] 5.2 After merge, verify `ci.yml` cuts the next patch release (e.g., `1.0.5` → `1.0.6`), publishes to GitHub Packages, and the floating `@v1` tag advances to the new commit
 - [ ] 5.3 Confirm with `git ls-remote --tags origin v1` that `v1` points at the fixed commit, not the previous broken one
 - [ ] 5.4 Re-run `izg-transformation-ui`'s release / test scan workflow against `image-tag=0.16.0`. Confirm: OIDC → poll → report → artifact path is green end-to-end, and the `izgw-transf-ui_v0.16.0_InspectorScan` artifact is non-empty and well-formed (open the files; don't trust the green check alone)
