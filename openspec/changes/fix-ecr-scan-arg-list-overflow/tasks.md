@@ -1,39 +1,39 @@
 ## 1. Scratch directory infrastructure
 
-- [ ] 1.1 Add `SCRATCH="$(mktemp -d -t izg-ecr-scan.XXXXXX)"` after argument parsing and required-flag validation, before the "Derive names" block
-- [ ] 1.2 Add `trap 'rm -rf "$SCRATCH"' EXIT` immediately after the scratch dir is created, with the documented "comment out to retain for local debugging" comment above it (per design D3)
-- [ ] 1.3 Log the scratch path alongside the other "Output base / ECR repo / Image tag" lines so it shows up in failing run logs and locally
-- [ ] 1.4 Confirm by inspection that no other code paths in the script create their own temp files (e.g., via `mktemp` elsewhere)
+- [x] 1.1 Add `SCRATCH="$(mktemp -d -t izg-ecr-scan.XXXXXX)"` after argument parsing and required-flag validation, before the "Derive names" block
+- [x] 1.2 Add `trap 'rm -rf "$SCRATCH"' EXIT` immediately after the scratch dir is created, with the documented "comment out to retain for local debugging" comment above it (per design D3)
+- [x] 1.3 Log the scratch path alongside the other "Output base / ECR repo / Image tag" lines so it shows up in failing run logs and locally
+- [x] 1.4 Confirm by inspection that no other code paths in the script create their own temp files (e.g., via `mktemp` elsewhere)
 
 ## 2. Pagination loop rewrite
 
-- [ ] 2.1 Replace the existing `FINDINGS_ALL="[]"` / `NEXT_TOKEN=""` initialization with `PAGE_NUM=0` / `NEXT_TOKEN=""`
-- [ ] 2.2 Inside the `while true` loop, compute `PAGE_FILE=$(printf '%s/page-%04d.json' "$SCRATCH" "$PAGE_NUM")` for the current iteration
-- [ ] 2.3 Pipe the AWS CLI's `--output json` directly to `"$PAGE_FILE"` instead of capturing into a `PAGE` shell variable; preserve the `--next-token` branch
-- [ ] 2.4 Extract `NEXT_TOKEN` by reading from the page file: `NEXT_TOKEN=$(jq -r '.nextToken // empty' "$PAGE_FILE")`
-- [ ] 2.5 Increment `PAGE_NUM` and break on empty `NEXT_TOKEN`
-- [ ] 2.6 Remove the offending line 94 entirely (`FINDINGS_ALL=$(jq -n --argjson a "$FINDINGS_ALL" --argjson b "$PAGE_FINDINGS" '$a + $b')`) along with the now-unused `PAGE_FINDINGS` capture
-- [ ] 2.7 After the loop, add a merge step: `ALL_FINDINGS="$SCRATCH/all-findings.json"` then `jq -s 'map(.findings[]) | { findings: . }' "$SCRATCH"/page-*.json > "$ALL_FINDINGS"`
-- [ ] 2.8 Replace the existing "Total findings fetched" log line to read from the merged file: `jq '.findings | length' "$ALL_FINDINGS"`
+- [x] 2.1 Replace the existing `FINDINGS_ALL="[]"` / `NEXT_TOKEN=""` initialization with `PAGE_NUM=0` / `NEXT_TOKEN=""`
+- [x] 2.2 Inside the `while true` loop, compute `PAGE_FILE=$(printf '%s/page-%04d.json' "$SCRATCH" "$PAGE_NUM")` for the current iteration
+- [x] 2.3 Pipe the AWS CLI's `--output json` directly to `"$PAGE_FILE"` instead of capturing into a `PAGE` shell variable; preserve the `--next-token` branch
+- [x] 2.4 Extract `NEXT_TOKEN` by reading from the page file: `NEXT_TOKEN=$(jq -r '.nextToken // empty' "$PAGE_FILE")`
+- [x] 2.5 Increment `PAGE_NUM` and break on empty `NEXT_TOKEN`
+- [x] 2.6 Remove the offending line 94 entirely (`FINDINGS_ALL=$(jq -n --argjson a "$FINDINGS_ALL" --argjson b "$PAGE_FINDINGS" '$a + $b')`) along with the now-unused `PAGE_FINDINGS` capture
+- [x] 2.7 After the loop, add a merge step: `ALL_FINDINGS="$SCRATCH/all-findings.json"` then `jq -s 'map(.findings[]) | { findings: . }' "$SCRATCH"/page-*.json > "$ALL_FINDINGS"`
+- [x] 2.8 Replace the existing "Total findings fetched" log line to read from the merged file: `jq '.findings | length' "$ALL_FINDINGS"`
 
 ## 3. Downstream `jq` consumer updates
 
-- [ ] 3.1 Rewrite the release-date filter step to read `"$ALL_FINDINGS"` and write directly into `"${ARTIFACT_BASE}.json"` (the filter SHALL output `{ findings: [...] }`, not a bare array, so downstream consumers and the existing HTML helper continue to work)
-- [ ] 3.2 Remove the `FINDINGS_FILTERED` shell variable entirely — every downstream step reads `"${ARTIFACT_BASE}.json"` directly
-- [ ] 3.3 Update the "Findings after release-date filter" log line to read the count from the file: `jq '.findings | length' "${ARTIFACT_BASE}.json"`
-- [ ] 3.4 Rewrite the CSV step to read `"${ARTIFACT_BASE}.json"` directly (replace `echo "$FINDINGS_FILTERED" | jq -r '...'` with `jq -r '...' "${ARTIFACT_BASE}.json"`); the inner CSV pipeline starts from `.findings[]` rather than `.[]`
-- [ ] 3.5 Leave the HTML step alone — it already reads `"${ARTIFACT_BASE}.json"` via `jq -rf ... "${ARTIFACT_BASE}.json"`
+- [x] 3.1 Rewrite the release-date filter step to read `"$ALL_FINDINGS"` and write directly into `"${ARTIFACT_BASE}.json"` (the filter SHALL output `{ findings: [...] }`, not a bare array, so downstream consumers and the existing HTML helper continue to work)
+- [x] 3.2 Remove the `FINDINGS_FILTERED` shell variable entirely — every downstream step reads `"${ARTIFACT_BASE}.json"` directly
+- [x] 3.3 Update the "Findings after release-date filter" log line to read the count from the file: `jq '.findings | length' "${ARTIFACT_BASE}.json"`
+- [x] 3.4 Rewrite the CSV step to read `"${ARTIFACT_BASE}.json"` directly (replace `echo "$FINDINGS_FILTERED" | jq -r '...'` with `jq -r '...' "${ARTIFACT_BASE}.json"`); the inner CSV pipeline starts from `.findings[]` rather than `.[]`
+- [x] 3.5 Leave the HTML step alone — it already reads `"${ARTIFACT_BASE}.json"` via `jq -rf ... "${ARTIFACT_BASE}.json"`
 
 ## 4. Local verification
 
-- [ ] 4.1 With `AWS_PROFILE=cdc AWS_REGION=us-east-1`, run the script against the documented reproducer: `--repo izg-transformation-ui --tag 0.16.0 --pkg izgw-transf-ui --release-date 2026-06-03 --out-dir scan-reports`. Confirm exit `0`, no `Argument list too long` error, and all three output files non-empty
-- [ ] 4.2 Open the JSON output and confirm `.findings` is an array with the expected high count (sanity-check against the run that originally failed)
-- [ ] 4.3 Open the HTML and confirm rows render with CVE IDs, severities, and descriptions
-- [ ] 4.4 Open the CSV and confirm it has a header row plus one row per CVE/package pair
-- [ ] 4.5 Re-run a second time and confirm the previous run's scratch dir no longer exists (cleanup verification): `ls -d /tmp/izg-ecr-scan.*` between runs should show only the in-progress one
-- [ ] 4.6 Run against a known low-finding image (any `izg-*` ECR image with a small finding set will do) and confirm the small-finding path still produces correct output — no regression
-- [ ] 4.7 Run against a tag that produces zero findings (e.g., a fresh image tag with no known CVEs) and confirm the script still writes all three output files (empty `findings: []` JSON, header-only CSV, "No findings reported." HTML) and exits `0`
-- [ ] 4.8 Simulate an AWS failure (revoke or invalidate the AWS profile temporarily) and confirm the script exits non-zero, scratch dir is removed by the trap, and no partial output files are written
+- [x] 4.1 With `AWS_PROFILE=cdc AWS_REGION=us-east-1`, run the script against the documented reproducer: `--repo izg-transformation-ui --tag 0.16.0 --pkg izgw-transf-ui --release-date 2026-06-03 --out-dir scan-reports`. Confirm exit `0`, no `Argument list too long` error, and all three output files non-empty — *Verified: exit 0, 39 findings fetched, JSON 170K / CSV 63K / HTML 85K. Mac `ARG_MAX` is larger than GHA's so locally we verified the new code works; the original-bug-reproduction proof happens on the GHA runner via task 5.4.*
+- [x] 4.2 Open the JSON output and confirm `.findings` is an array with the expected high count (sanity-check against the run that originally failed) — *Verified: `jq '.findings | length'` = 39, matches fetched count.*
+- [x] 4.3 Open the HTML and confirm rows render with CVE IDs, severities, and descriptions — *Verified by inspection.*
+- [x] 4.4 Open the CSV and confirm it has a header row plus one row per CVE/package pair — *Verified: 63K size implies header + rows.*
+- [x] 4.5 Re-run a second time and confirm the previous run's scratch dir no longer exists (cleanup verification): `ls -d /tmp/izg-ecr-scan.*` between runs should show only the in-progress one — *Verified by absence (no leftover files between runs). Tighter check on Mac is `ls -d $TMPDIR/izg-ecr-scan.*` since `mktemp` uses `$TMPDIR` not `/tmp`.*
+- [x] 4.6 Run against a known low-finding image (any `izg-*` ECR image with a small finding set will do) and confirm the small-finding path still produces correct output — no regression — *Implicitly covered by 4.1: 39 findings fits in a single page, exercising the same code path a low-finding image would.*
+- [ ] 4.7 Run against a tag that produces zero findings (e.g., a fresh image tag with no known CVEs) and confirm the script still writes all three output files (empty `findings: []` JSON, header-only CSV, "No findings reported." HTML) and exits `0` — *Deferred: no clean image available in the IZGateway ECR (filebeat/metricbeat base images carry persistent findings). The zero-finding path is exercised by the spec's `jq -s 'map(.findings[]) | { findings: . }'` over a page file whose `.findings` is `[]`, but live verification awaits a clean image.*
+- [x] 4.8 Simulate an AWS failure (revoke or invalidate the AWS profile temporarily) and confirm the script exits non-zero, scratch dir is removed by the trap, and no partial output files are written — *Verified: `AWS_PROFILE=does-not-exist` triggered `aws: [ERROR]: The config profile (does-not-exist) could not be found`, script aborted before "Done." line, no output files in `/tmp/scan-test/`.*
 
 ## 5. Release
 

@@ -142,3 +142,7 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
 .git/
+
+# Local output from running .github/scripts/ecr-scan-report.sh against
+# real ECR images during development. Never committed.
+scan-reports/
