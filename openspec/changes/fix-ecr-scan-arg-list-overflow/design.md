@@ -213,7 +213,29 @@ The argv overflow is independent of page size — it's the accumulator that brea
 Reducing `--max-results` would slow the script (more round trips) without addressing
 the actual bug, and increasing it isn't possible (100 is the AWS limit).
 
-### D6: No new spec promotion for other `cve-scan-action` outputs
+### D6: Row dedup with key `(name, packageManager, version, fixedInVersion)`; filePaths joined in a new column
+
+Verification against `izg-transformation-ui:0.16.0` (the same image whose argv overflow this CR fixes) surfaced a latent CSV/HTML behavior: each finding can have multiple `vulnerablePackages` entries that are identical except for `filePath`. Inspector2 reports the same Go vulnerability once per binary path (`/filebeat/filebeat`, `/usr/bin/filebeat`, `/metricbeat/metricbeat`, `/usr/bin/metricbeat`) because the same binary is shipped at multiple locations. The old CSV/HTML pipelines iterated `vulnerablePackages[]` and omitted `filePath` as a column, producing rows that looked like meaningless duplicates (150 rows for 39 findings on this image).
+
+The fix is in two parts:
+
+1. **Add `filePath` to the output as a column.** Reviewers can now see *which* installed locations are affected.
+2. **Deduplicate on `(name, packageManager, version, fixedInVersion)`** within each finding and **join** the matching filePaths into the new column. For the live image this collapses 150 CSV rows down to 39 — one row per finding, since every multi-package finding on that image was a single Go package shipped at multiple paths.
+
+The dedup key includes `packageManager` defensively. The current image has every finding's packages all from the same manager (mostly `GO`), so it doesn't affect the row count today. But future images might surface the same package name across ecosystems (e.g. a Go binary and an NPM dep sharing a name), and keeping the manager in the key preserves the right semantic split if that ever happens.
+
+The jq implementation uses `group_by([.name, .packageManager, .version, .fixedInVersion])` — arrays sort lexically and equal arrays cluster, which is well-defined behavior. Inside each group, `.[0]` provides the representative tuple values and `map(.filePath // "") | unique | map(select(. != ""))` produces the joined paths cell.
+
+**Why CSV joins paths with `", "` and HTML joins with `<br>`:** CSV cells get quoted by `@csv`, so a comma-separated list in one cell is unambiguous and reads fine in any spreadsheet. HTML cells get richer formatting via the `inspector2-scan-report.jq` helper — one path per line is more readable in a browser. Both formats individually HTML-escape (HTML side) the file paths before joining; CSV's `@csv` handles its own escaping.
+
+**JSON output is unchanged.** The CSV/HTML deduplication is purely a presentation concern. The `${ARTIFACT_BASE}.json` envelope still mirrors the raw Inspector2 findings byte-for-byte (after the release-date filter). Downstream tools that want the raw shape (one entry per filePath) can keep using the JSON.
+
+**Alternatives considered:**
+- *One row per filePath (don't dedup).* Simplest. Rejected — the live experience proved this produces visually-confusing reports for CDC reviewers.
+- *Dedup including filePath in the key.* No-op for the live image (filePath is the only varying field). Rejected — defeats the purpose.
+- *Dedup across findings (not per-finding).* Tempting for a tighter report but loses per-finding context (severity, CVSS, date, description vary per finding). Rejected — keep dedup scope inside one finding.
+
+### D7: No new spec promotion for other `cve-scan-action` outputs
 
 The archived `cve-scan-action` CR introduced several capabilities: the OWASP composite
 action, the CI/CD publish workflow, the release workflow, and `ecr-scan-report`. This

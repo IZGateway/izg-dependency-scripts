@@ -93,8 +93,7 @@ future consumer of `ecr-scan-report.yml@v1` from the same failure mode.
 - **No change** to the script's CLI interface (`--repo`, `--tag`, `--pkg`,
   `--release-date`, `--out-dir`), the reusable workflow's inputs, or the output file
   naming convention.
-- **No change** to `inspector2-scan-report.jq` — it already consumes the JSON envelope
-  via file input and is not part of the bug.
+- **Update CSV and HTML row model** to deduplicate per `(name, packageManager, version, fixedInVersion)` and collect all matching `filePath` values into a new "File Paths" column. Also adds a new "Package Manager" column. Surfaces the underlying Inspector2 data faithfully without the apparent-duplicate rows that arise from one binary being installed at multiple paths (filebeat/metricbeat on the `izg-transformation-ui:0.16.0` image is the live example: each finding had 2–4 vulnerablePackages entries differing only by filePath, producing 150 CSV rows for 39 findings). Updates `inspector2-scan-report.jq` in the same shape.
 - **Bump label**: `bump:patch` — bug fix with no behavior change for callers using
   small-finding images, no API change.
 
@@ -127,6 +126,10 @@ future consumer of `ecr-scan-report.yml@v1` from the same failure mode.
   low-finding ones.
 - Every other consumer of `ecr-scan-report.yml@v1` is protected from the same failure
   mode without needing any caller-side change.
+- CSV and HTML reports get two new columns (Package Manager, File Paths) and
+  fewer rows per finding (one row per distinct package-key tuple, with file paths
+  joined). The JSON envelope is unchanged. Consumer downstream tooling that
+  expects the prior column set or per-filePath row counts will need to adjust.
 
 **Performance:**
 - Per-page memory and disk usage are bounded (one page = max 100 findings).

@@ -42,3 +42,16 @@
 - [ ] 5.3 Confirm with `git ls-remote --tags origin v1` that `v1` points at the fixed commit, not the previous broken one
 - [ ] 5.4 Re-run `izg-transformation-ui`'s release / test scan workflow against `image-tag=0.16.0`. Confirm: OIDC → poll → report → artifact path is green end-to-end, and the `izgw-transf-ui_v0.16.0_InspectorScan` artifact is non-empty and well-formed (open the files; don't trust the green check alone)
 - [ ] 5.5 Coordinate with the `izg-transformation-ui` team on cleanup of their temporary `test-ecr-scan.yml` workflow (out of scope here but mentioned in the handoff doc)
+
+## 6. CSV / HTML row dedup + filePath column
+
+Added after live verification on `izg-transformation-ui:0.16.0` surfaced apparent-duplicate
+rows (150 CSV rows for 39 findings) caused by `vulnerablePackages` entries that differ
+only by `filePath`. See spec requirement "CSV and HTML rows are deduplicated per package
+tuple" and design D6.
+
+- [x] 6.1 Rewrite the CSV jq pipeline in `.github/scripts/ecr-scan-report.sh` to (a) iterate `.findings[]`, (b) `group_by([.name, .packageManager, .version, .fixedInVersion])` inside each finding's `vulnerablePackages`, (c) emit one row per group with all filePaths joined by `", "`. Add "Package Manager" and "File Paths" columns to the header.
+- [x] 6.2 Update `inspector2-scan-report.jq` `normalise_findings` to use the same group_by pattern and emit `pkgManager` and `filePaths` fields per row. Path joining uses `<br>` (HTML break) so each path renders on its own line. HTML-escape each path individually before joining so we don't double-escape the `<br>` separators.
+- [x] 6.3 Add "Package Manager" and "File Paths" `<th>`/`<td>` cells to the HTML table template in `inspector2-scan-report.jq`.
+- [x] 6.4 Re-run against the live data (the existing scan-reports/ JSON from task 4.1 is sufficient — just re-emit CSV/HTML from it). Confirm row count drops to one per finding for the filebeat/metricbeat image (39 rows), and the new columns populate as expected. — *Verified against the consumer's `izgw-transf-ui_v0.16.0_InspectorScan.json` fixture: CSV down from 150 to 39 rows, HTML matches at 39, "Package Manager" column populates as `GO` for the Go findings, "File Paths" joined cleanly.*
+- [x] 6.5 Spot-check a finding that has only one `vulnerablePackages` entry and a finding that has multiple entries with distinct `(name, packageManager, version, fixedInVersion)` tuples — confirm the single-entry case still emits one row, and the multi-tuple case emits one row per tuple. — *Verified: CVE-2026-46595 (4 paths, same tuple) → 1 row with all 4 paths joined; CVE-2026-42151 (only 2 paths, metricbeat-only) → 1 row with the 2 metricbeat paths; single-package findings still emit cleanly with the lone filePath.*

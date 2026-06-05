@@ -100,6 +100,44 @@ script exits, including on error paths. The script SHALL NOT leave artifacts und
 - **THEN** any scratch directories created prior to the failure SHALL be removed via a
   `trap … EXIT` handler before the script's process terminates
 
+### Requirement: CSV and HTML rows are deduplicated per package tuple
+
+CSV and HTML output rows SHALL be emitted at the granularity of one row per
+distinct `(name, packageManager, version, fixedInVersion)` tuple **within each
+finding**, not one row per `vulnerablePackages` entry. When multiple
+`vulnerablePackages` entries within the same finding share that tuple — for
+example, the same Go binary installed at multiple filesystem locations — they
+SHALL be collapsed into a single row whose "File Paths" cell contains all
+matching `filePath` values joined for display.
+
+CSV and HTML SHALL each include a "Package Manager" column (from
+`packageManager`) and a "File Paths" column (joined `filePath` values). The
+JSON output envelope SHALL NOT be reshaped — it still mirrors the raw
+Inspector2 findings.
+
+#### Scenario: Multiple file paths under one CVE collapse to one row
+
+- **WHEN** an Inspector2 finding has multiple `vulnerablePackages` entries that
+  share the same `(name, packageManager, version, fixedInVersion)` tuple and
+  differ only by `filePath` (e.g., a Go binary installed at `/filebeat/filebeat`,
+  `/metricbeat/metricbeat`, `/usr/bin/filebeat`, and `/usr/bin/metricbeat`)
+- **THEN** the CSV and HTML SHALL emit exactly one row for that finding, with
+  the "File Paths" column containing all four file paths joined for display
+
+#### Scenario: Distinct package tuples produce distinct rows
+
+- **WHEN** an Inspector2 finding has multiple `vulnerablePackages` entries that
+  differ in any of `name`, `packageManager`, `version`, or `fixedInVersion`
+- **THEN** the CSV and HTML SHALL emit a separate row for each distinct tuple,
+  each with its own "File Paths" cell
+
+#### Scenario: JSON envelope is unaffected
+
+- **WHEN** the CSV/HTML deduplication runs
+- **THEN** the `${ARTIFACT_BASE}.json` output SHALL retain the unmodified
+  `vulnerablePackages` array exactly as Inspector2 returned it (no collapsing,
+  no field removal)
+
 ### Requirement: Exit code reflects real outcome
 
 The script SHALL exit non-zero on any genuine failure (AWS error, jq error, missing

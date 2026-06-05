@@ -133,8 +133,12 @@ echo "Findings after release-date filter: $(jq '.findings | length' "${ARTIFACT_
 echo "Written: ${ARTIFACT_BASE}.json"
 
 # ---- Write CSV ----
+# Rows are emitted at one-per-(name, packageManager, version, fixedInVersion)
+# tuple per finding. vulnerablePackages entries that differ only by filePath
+# (e.g., the same Go binary at /usr/bin/foo and /foo/foo) collapse into a
+# single row whose File Paths cell lists all paths. See design.md D6.
 jq -r '
-  ["CVE ID","Severity","CVSS Score","CVE Date","Package","Installed Version","Fixed In","Description"],
+  ["CVE ID","Severity","CVSS Score","CVE Date","Package","Package Manager","Installed Version","Fixed In","File Paths","Description"],
   (.findings[] |
     . as $f |
     ($f.packageVulnerabilityDetails.cvss |
@@ -142,17 +146,24 @@ jq -r '
       $f.packageVulnerabilityDetails.cvss[0] //
       {"baseScore": null}
     ) as $cvss |
-    ($f.packageVulnerabilityDetails.vulnerablePackages // [{}]) | .[] |
-    [
-      ($f.packageVulnerabilityDetails.vulnerabilityId // ""),
-      ($f.severity // ""),
-      ($cvss.baseScore | if . == null then "" else tostring end),
-      ($f.packageVulnerabilityDetails.vendorCreatedAt | if . then split("T")[0] else "" end),
-      (.name // ""),
-      (.version // ""),
-      (.fixedInVersion // ""),
-      ($f.description // "" | gsub("\n"; " ") | gsub(","; ";"))
-    ]
+    ($f.packageVulnerabilityDetails.vulnerablePackages // [{}])
+    | group_by([(.name // ""), (.packageManager // ""), (.version // ""), (.fixedInVersion // "")])
+    | .[]
+    | . as $group
+    | ($group[0]) as $p
+    | ($group | map(.filePath // "") | unique | map(select(. != "")) | join(", ")) as $paths
+    | [
+        ($f.packageVulnerabilityDetails.vulnerabilityId // ""),
+        ($f.severity // ""),
+        ($cvss.baseScore | if . == null then "" else tostring end),
+        ($f.packageVulnerabilityDetails.vendorCreatedAt | if . then split("T")[0] else "" end),
+        ($p.name // ""),
+        ($p.packageManager // ""),
+        ($p.version // ""),
+        ($p.fixedInVersion // ""),
+        $paths,
+        ($f.description // "" | gsub("\n"; " ") | gsub(","; ";"))
+      ]
   ) |
   @csv
 ' "${ARTIFACT_BASE}.json" > "${ARTIFACT_BASE}.csv"
