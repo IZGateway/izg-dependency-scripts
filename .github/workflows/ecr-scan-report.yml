@@ -33,6 +33,14 @@ on:
         required: false
         type: number
         default: 90
+      scripts-ref:
+        description: >
+          Ref of izg-dependency-scripts to load the scan script from. Defaults
+          to the floating @v1 tag. Override to a branch/tag/SHA when testing
+          script changes from a non-production ref.
+        required: false
+        type: string
+        default: 'v1'
 
 jobs:
   ecr-scan-report:
@@ -50,7 +58,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: IZGateway/izg-dependency-scripts
-          ref: v1
+          ref: ${{ inputs.scripts-ref }}
           path: izg-dependency-scripts
           sparse-checkout: |
             .github/scripts
