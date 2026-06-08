@@ -7,7 +7,6 @@ const semver = require('semver');
 
 const EXIT_OK = 0;
 const EXIT_PRE_EVAL_ERROR = 1;
-const EXIT_EVAL_INCOMPLETE = 2;
 
 const TRIAL_TIMEOUT_MS = 120_000;
 
@@ -95,8 +94,15 @@ function main() {
 
   printSummary(decisions);
 
-  const anySkipped = decisions.some(d => d.outcome === 'skipped');
-  process.exit(anySkipped ? EXIT_EVAL_INCOMPLETE : EXIT_OK);
+  // A completed evaluation always exits 0 — whether overrides were removed,
+  // kept, or skipped. "skipped" (e.g. an aliased "npm:<pkg>@<range>" override
+  // that can't be parsed as semver, or a nested override object) is a normal
+  // outcome, not a failure, and must not abort `bash -e` callers that invoke
+  // this script unguarded. Genuine failures (missing/unparseable package.json
+  // or package-lock.json, uncaught exceptions) exit non-zero from their own
+  // paths above. Callers detect whether anything changed via `git diff`, the
+  // same contract used by update-overrides.js and fix-all-vulnerabilities.js.
+  process.exit(EXIT_OK);
 }
 
 function evaluateOverride(pkg, overrideVersion, packageJson, consumerLock, cwd) {

@@ -61,9 +61,14 @@ echo.
 
 echo Step 3: Testing if overrides can be removed...
 echo ----------------------------------------------
+REM test-overrides.js exits 0 on any completed evaluation (overrides removed,
+REM kept, or skipped are all normal outcomes). A non-zero exit means a genuine
+REM failure (missing/unparseable package.json or package-lock.json, uncaught
+REM exception), so we abort here rather than continuing.
 node scripts\test-overrides.js
 if errorlevel 1 (
-  echo [93m Warning: test-overrides.js completed with warnings [0m
+  echo [41m Error: test-overrides.js failed [0m
+  exit /b 1
 )
 echo.
 

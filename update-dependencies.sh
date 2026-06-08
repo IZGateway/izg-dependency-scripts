@@ -52,25 +52,11 @@ echo ""
 
 echo "Step 3: Testing if overrides can be removed..."
 echo "----------------------------------------------"
-# test-overrides.js uses tri-state exit codes:
-#   0 = clean, every override classified
-#   1 = pre-evaluation error (missing package.json, unwritable temp dir,
-#       JSON parse failure) — fatal, should abort
-#   2 = evaluation-incomplete: at least one override classified as "skipped"
-#       (routine for repos with nested or alias override forms) — non-fatal
-#
-# Under `set -e` a bare `node scripts/test-overrides.js` would abort on
-# either non-zero code, collapsing the distinction. To preserve it we
-# capture the exit code via `|| status=$?` (which neutralizes set -e for
-# that one line) and branch on the value below.
-status=0
-node scripts/test-overrides.js || status=$?
-if [ $status -eq 1 ]; then
-  echo "Error: test-overrides.js failed with pre-evaluation error (exit 1)"
-  exit 1
-elif [ $status -eq 2 ]; then
-  echo "Warning: test-overrides.js completed with some overrides skipped (exit 2)"
-fi
+# test-overrides.js exits 0 on any completed evaluation (overrides removed,
+# kept, or skipped are all normal outcomes). A non-zero exit means a genuine
+# failure (missing/unparseable package.json or package-lock.json, uncaught
+# exception), which under `set -e` aborts this script — the correct behavior.
+node scripts/test-overrides.js
 echo ""
 
 echo "Step 4: Updating package-lock.json..."
