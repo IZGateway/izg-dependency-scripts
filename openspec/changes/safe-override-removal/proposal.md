@@ -27,8 +27,9 @@ deleting overrides that are still doing real work.
 - **Given** the script cannot determine the natural resolution for an override (npm error,
   network failure, parse failure),
   **When** `test-overrides.js` runs,
-  **Then** the override is **kept**, reported as `skipped`, and the script exits with a
-  non-zero "evaluation incomplete" code that callers can distinguish from "no removals".
+  **Then** the override is **kept** and reported as `skipped`. (Originally this drove a
+  distinct non-zero "evaluation incomplete" exit code; superseded by IGDD-2967 — PR #8 — so
+  a `skipped` outcome is a normal result that still exits `0`. See the "What Changes" note.)
 
 ## Background
 
@@ -79,6 +80,10 @@ catches the reintroduced CVE — and only if SCA happens to flag that exact vers
   overrides were kept); a distinct non-zero code (e.g. `2`) for "evaluation incomplete"
   (one or more overrides ended in `skipped` state) so calling workflows can treat that as
   visible-but-non-fatal.
+  > **Superseded by IGDD-2967 (PR #8).** This tri-state exit code was reverted to a
+  > two-state contract: `0` for any completed evaluation (removed/kept/skipped all normal)
+  > and `1` for genuine failure. The dedicated `2` code caused false nightly-workflow
+  > failures in Configuration Console and Transform UI. See `design.md` D4.
 - **Preserve current contract**: the script still mutates the consumer's `package.json` in
   place and still assumes the caller runs `npm install` afterward. No change to the bin
   symlink names, no change to peer-dep declarations.
@@ -92,8 +97,9 @@ catches the reintroduced CVE — and only if SCA happens to flag that exact vers
 - `override-evaluation`: Determines whether each entry in a consumer's `package.json`
   `overrides` block is still required, by simulating removal in a scratch working tree
   and comparing the resulting natural resolution against the override floor. Reports
-  per-override tri-state outcomes and uses exit codes to distinguish "no removals" from
-  "evaluation incomplete."
+  per-override tri-state outcomes. (Exit codes originally distinguished "no removals" from
+  "evaluation incomplete"; superseded by IGDD-2967 to a two-state `0`/`1` contract — see
+  `design.md` D4.)
 
 ### Modified Capabilities
 <!-- None. There are no pre-existing specs in openspec/specs/ — test-overrides.js has

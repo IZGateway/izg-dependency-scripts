@@ -20,7 +20,7 @@ Stakeholders: every IZGateway repo that consumes `@izgateway/dependency-scripts`
 
 **Goals:**
 - Decide "is this override still required?" by observing what npm would resolve **without** the override, not by inspecting the lockfile produced **with** it.
-- Report a tri-state outcome per override (`kept` / `removed` / `skipped`) and use exit codes to distinguish "no removals" from "evaluation incomplete."
+- Report a tri-state outcome per override (`kept` / `removed` / `skipped`). (Exit codes originally distinguished "no removals" from "evaluation incomplete"; superseded by IGDD-2967 — see D4 — to a two-state `0`/`1` contract.)
 - Preserve the existing in-place mutation contract on `package.json` (no `npm install` invoked inside the consumer's working tree by this script).
 - Avoid scope explosion: do not introduce a new override schema, do not change `bin` names, do not require consumer workflow changes.
 
@@ -64,16 +64,21 @@ Decisions accumulate in memory. After all overrides have been classified, the sc
 
 ### D4: Exit codes
 
+> **Superseded by IGDD-2967 (PR #8).** The tri-state exit code below (`2` for "evaluation incomplete") caused the nightly workflow to fail in Configuration Console and Transform UI, because `set -e`/`errorlevel` callers treated the `2` as fatal and a `skipped` override is a routine, non-fatal outcome. The contract is now two-state — see the revised table.
+
+**Revised (IGDD-2967):**
+
 | Code | Meaning |
 | ---- | ------- |
-| `0`  | Evaluation completed; every override classified as `kept` or `removed`. |
-| `2`  | Evaluation completed for some overrides but at least one ended in `skipped`. |
-| `1`  | Pre-evaluation error: `package.json` or `package-lock.json` missing/malformed, or scratch setup failed before any per-override trial could run. |
+| `0`  | Evaluation completed; every override classified as `kept`, `removed`, or `skipped`. |
+| `1`  | Genuine failure: `package.json` / `package-lock.json` missing or malformed, scratch setup failure, or an uncaught exception. |
 
-`2` is chosen over `1` for "evaluation incomplete" because Bash conventions reserve `1` for general/unspecified errors and the nightly workflow needs to distinguish "I could not finish my job" from "I never got started." Workflow callers can treat `2` as a soft warning (`|| true` style) while still treating `1` as fatal.
+A `skipped` outcome is a normal result, not an error, and does not affect the exit code. Callers run the script without an error guard and detect changes via `git diff`, the same contract as `update-overrides` and `fix-vulnerabilities`.
+
+**Original rationale (no longer in effect):** `2` was chosen over `1` for "evaluation incomplete" because Bash conventions reserve `1` for general/unspecified errors and the nightly workflow was expected to distinguish "I could not finish my job" from "I never got started." In practice no caller needed that distinction, and treating `skipped` as a distinct non-zero code only produced false failures.
 
 **Alternative considered:**
-- *Single non-zero code for any not-clean state*. Loses the distinction the spec requires. Rejected.
+- *Single non-zero code for any not-clean state*. Originally rejected as losing a distinction the spec required; IGDD-2967 adopts essentially this — `skipped` is folded into the normal `0` path and only genuine errors return non-zero.
 
 ### D5: Scratch-tree carries `.npmrc` if present
 

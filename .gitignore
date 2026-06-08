@@ -141,4 +141,7 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
+# Local CVE / ECR scan report output (cve-scan / ecr-scan-report)
+scan-reports/
+
 .git/

@@ -101,36 +101,42 @@ override version:
 - **THEN** the override SHALL remain in `package.json` and the outcome SHALL be reported
   as `skipped`
 
-### Requirement: Exit codes SHALL distinguish completion states
+### Requirement: Exit codes SHALL distinguish completion from failure
 
-The script's process exit code SHALL convey one of three completion states so that
-calling workflows can react appropriately:
+The script's process exit code SHALL convey one of two states so that calling
+workflows can react appropriately:
 
-- **`0`** — evaluation completed for every override; results are deterministic.
-  Applies whether some, all, or no overrides were removed.
-- A distinct **non-zero "evaluation incomplete" code** (e.g., `2`) — at least one
-  override ended in `skipped` state. Calling workflows SHOULD treat this as
-  visible-but-non-fatal.
-- Any other non-zero code — unrecoverable error before evaluation began
-  (missing files, malformed `package.json`, etc.).
+- **`0`** — evaluation completed. Overrides may have been removed, kept, or skipped;
+  all three are normal outcomes. A `skipped` override is **not** an error and does
+  not affect the exit code.
+- **`1`** — genuine failure before or during evaluation: missing or unparseable
+  `package.json` / `package-lock.json`, scratch-tree setup failure, or an uncaught
+  exception.
 
-#### Scenario: Clean run with all overrides classified
+Callers detect whether `package.json` changed via `git diff` (the same contract
+used by `update-overrides` and `fix-vulnerabilities`); they SHALL invoke this script
+without an error guard and expect `0` on any successful run.
 
-- **WHEN** the script evaluates every override and each ends in `kept` or `removed`
+> **Superseded by IGDD-2967 (PR #8).** The original design specified a tri-state
+> exit code with a dedicated "evaluation incomplete" code (`2`) for runs with at
+> least one `skipped` override. That distinction caused nightly workflow failures
+> in consumer repos (Configuration Console and Transform UI), because a `skipped`
+> outcome is a routine, non-fatal result rather than an error. The contract above
+> is the current two-state behavior: `0` for any completed evaluation and `1` for
+> genuine failure.
+
+#### Scenario: Completed run, regardless of per-override outcomes
+
+- **WHEN** the script evaluates every override and each ends in `kept`, `removed`,
+  or `skipped`
 - **THEN** the script SHALL exit with code `0`
 
-#### Scenario: Run with at least one skipped override
+#### Scenario: Pre-evaluation or in-evaluation failure
 
-- **WHEN** the script evaluates every override and at least one ends in `skipped`
-- **THEN** the script SHALL exit with the dedicated "evaluation incomplete" code
-  (distinct from `0` and from any pre-evaluation error code)
-
-#### Scenario: Pre-evaluation failure
-
-- **WHEN** the script cannot begin evaluation because `package.json` or
-  `package-lock.json` is missing or malformed
-- **THEN** the script SHALL exit with a non-zero code distinct from the
-  "evaluation incomplete" code
+- **WHEN** the script cannot begin or complete evaluation because `package.json` or
+  `package-lock.json` is missing or malformed, scratch setup fails, or an uncaught
+  exception is raised
+- **THEN** the script SHALL exit with code `1`
 
 ### Requirement: Mutation of `package.json` SHALL be atomic across the run
 
