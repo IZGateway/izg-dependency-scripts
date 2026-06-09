@@ -212,5 +212,3 @@ empty object behind.
 
 - **WHEN** the script removes the only entry in `overrides`
 - **THEN** the resulting `package.json` SHALL NOT contain an `overrides` key
-</content>
-</invoke>
