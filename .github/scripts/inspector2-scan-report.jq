@@ -30,6 +30,13 @@ def severity_order:
 
 # Normalise Inspector2 list-findings findings into display rows.
 # Input: {"findings": [...]} envelope.
+#
+# Within each finding, vulnerablePackages entries are grouped by
+# (name, packageManager, version, fixedInVersion) so that the same package
+# installed at multiple file paths collapses into one row with all paths
+# joined into the filePaths field. Paths are HTML-escaped individually so
+# the literal <br> separators survive when rendered in the table cell.
+# See design.md D6.
 def normalise_findings:
   .findings[] |
   . as $f |
@@ -38,17 +45,24 @@ def normalise_findings:
     $f.packageVulnerabilityDetails.cvss[0] //
     {baseScore: null}
   ) as $cvss |
-  ($f.packageVulnerabilityDetails.vulnerablePackages // [{}]) | .[] |
-  {
-    cveId:       ($f.packageVulnerabilityDetails.vulnerabilityId // ""),
-    severity:    ($f.severity // ""),
-    score:       ($cvss.baseScore // -1),
-    cveDate:     ($f.packageVulnerabilityDetails.vendorCreatedAt | if . then split("T")[0] else "" end),
-    pkgName:     (.name // ""),
-    installed:   (.version // ""),
-    fixedIn:     (.fixedInVersion // ""),
-    description: ($f.description // "")
-  };
+  ($f.packageVulnerabilityDetails.vulnerablePackages // [{}])
+  | group_by([(.name // ""), (.packageManager // ""), (.version // ""), (.fixedInVersion // "")])
+  | .[]
+  | . as $group
+  | ($group[0]) as $p
+  | ($group | map(.filePath // "") | unique | map(select(. != "")) | map(esc) | join("<br>")) as $paths
+  | {
+      cveId:       ($f.packageVulnerabilityDetails.vulnerabilityId // ""),
+      severity:    ($f.severity // ""),
+      score:       ($cvss.baseScore // -1),
+      cveDate:     ($f.packageVulnerabilityDetails.vendorCreatedAt | if . then split("T")[0] else "" end),
+      pkgName:     ($p.name // ""),
+      pkgManager:  ($p.packageManager // ""),
+      installed:   ($p.version // ""),
+      fixedIn:     ($p.fixedInVersion // ""),
+      filePaths:   $paths,
+      description: ($f.description // "")
+    };
 
 [normalise_findings] |
 sort_by([-(.score), (.severity | severity_order)]) |
@@ -58,9 +72,9 @@ sort_by([-(.score), (.severity | severity_order)]) |
 if length == 0 then
   "<p><em>No findings reported.</em></p>"
 else
-  "<table>\n  <thead>\n    <tr>\n      <th>CVE ID</th>\n      <th>Severity</th>\n      <th>CVSS Score</th>\n      <th>CVE Date</th>\n      <th>Package Name</th>\n      <th>Installed Version</th>\n      <th>Fixed In</th>\n      <th>Description</th>\n    </tr>\n  </thead>\n  <tbody>",
+  "<table>\n  <thead>\n    <tr>\n      <th>CVE ID</th>\n      <th>Severity</th>\n      <th>CVSS Score</th>\n      <th>CVE Date</th>\n      <th>Package Name</th>\n      <th>Package Manager</th>\n      <th>Installed Version</th>\n      <th>Fixed In</th>\n      <th>File Paths</th>\n      <th>Description</th>\n    </tr>\n  </thead>\n  <tbody>",
   (.[] |
-    "    <tr><td><a href=\"https://nvd.nist.gov/vuln/detail/\(.cveId | esc)\">\(.cveId | esc)</a></td><td class=\"sev-\(.severity | esc)\">\(.severity | esc)</td><td>\(if .score < 0 then "" else .score | tostring end)</td><td>\(.cveDate | esc)</td><td>\(.pkgName | esc)</td><td>\(.installed | esc)</td><td>\(if .fixedIn == "" then "<em>None</em>" else .fixedIn | esc end)</td><td>\(.description | esc)</td></tr>"
+    "    <tr><td><a href=\"https://nvd.nist.gov/vuln/detail/\(.cveId | esc)\">\(.cveId | esc)</a></td><td class=\"sev-\(.severity | esc)\">\(.severity | esc)</td><td>\(if .score < 0 then "" else .score | tostring end)</td><td>\(.cveDate | esc)</td><td>\(.pkgName | esc)</td><td>\(.pkgManager | esc)</td><td>\(.installed | esc)</td><td>\(if .fixedIn == "" then "<em>None</em>" else .fixedIn | esc end)</td><td>\(.filePaths)</td><td>\(.description | esc)</td></tr>"
   ),
   "  </tbody>\n</table>"
 end,

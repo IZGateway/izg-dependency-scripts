@@ -47,24 +47,35 @@ done
 
 mkdir -p "$OUT_DIR"
 
+# ---- Scratch tree ----
+# Holds raw per-page AWS responses and the merged findings file. Keeping all
+# findings out of shell variables (and thus out of any spawned process's argv)
+# is what prevents the ARG_MAX overflow that broke this script on high-finding
+# images. See openspec/changes/fix-ecr-scan-arg-list-overflow/ for the spec.
+SCRATCH="$(mktemp -d -t izg-ecr-scan.XXXXXX)"
+# Scratch files are removed on exit. To retain them for local debugging,
+# comment out the trap below and re-run; the directory path is printed in the
+# "Scratch dir" log line just below.
+trap 'rm -rf "$SCRATCH"' EXIT
+
 # ---- Derive names ----
-# Extract semver from tag: 2.4.0-RELEASE-42 -> 2.4.0
+# Extract semver from tag: "2.4.0-RELEASE-42" or plain "2.4.0" both yield "2.4.0"
 VERSION="${TAG%%-RELEASE-*}"
 
 # CDC date prefix: YYYY-MM-DD -> YYYYMMDD
 DATE_PREFIX="${RELEASE_DATE//-/}"
 
 ARTIFACT_BASE="${OUT_DIR}/${DATE_PREFIX}_${PKG}_v${VERSION}_InspectorScan"
+ALL_FINDINGS="${SCRATCH}/all-findings.json"
 
 echo "ECR repo:     $REPO"
 echo "Image tag:    $TAG"
 echo "Version:      $VERSION"
 echo "Release date: $RELEASE_DATE"
+echo "Scratch dir:  $SCRATCH"
 echo "Output base:  $ARTIFACT_BASE"
 
-# ---- Fetch all findings from Inspector2 (paginated) ----
-echo "Fetching findings from Inspector2..."
-
+# ---- Build Inspector2 filter ----
 FILTER_CRITERIA=$(jq -n \
   --arg repo "$REPO" \
   --arg tag  "$TAG" \
@@ -73,72 +84,89 @@ FILTER_CRITERIA=$(jq -n \
     ecrImageTags:            [{ comparison: "EQUALS", value: $tag  }]
   }')
 
-FINDINGS_ALL="[]"
+# ---- Paginate Inspector2 findings, streaming each page to its own file ----
+# Findings never live in a shell variable. Each AWS response is written
+# straight to disk, and the merge step at the end uses jq -s over a glob to
+# combine pages — both inputs flow through file I/O, never argv.
+echo "Fetching findings from Inspector2..."
+
+PAGE_NUM=0
 NEXT_TOKEN=""
 
 while true; do
+  PAGE_FILE=$(printf '%s/page-%04d.json' "$SCRATCH" "$PAGE_NUM")
+
   if [[ -n "$NEXT_TOKEN" ]]; then
-    PAGE=$(aws inspector2 list-findings \
+    aws inspector2 list-findings \
       --filter-criteria "$FILTER_CRITERIA" \
       --max-results 100 \
       --next-token "$NEXT_TOKEN" \
-      --output json)
+      --output json > "$PAGE_FILE"
   else
-    PAGE=$(aws inspector2 list-findings \
+    aws inspector2 list-findings \
       --filter-criteria "$FILTER_CRITERIA" \
       --max-results 100 \
-      --output json)
+      --output json > "$PAGE_FILE"
   fi
 
-  PAGE_FINDINGS=$(echo "$PAGE" | jq '.findings')
-  FINDINGS_ALL=$(jq -n --argjson a "$FINDINGS_ALL" --argjson b "$PAGE_FINDINGS" '$a + $b')
-
-  NEXT_TOKEN=$(echo "$PAGE" | jq -r '.nextToken // empty')
+  NEXT_TOKEN=$(jq -r '.nextToken // empty' "$PAGE_FILE")
+  PAGE_NUM=$((PAGE_NUM + 1))
   [[ -z "$NEXT_TOKEN" ]] && break
 done
 
-echo "Total findings fetched: $(echo "$FINDINGS_ALL" | jq 'length')"
+# Merge per-page responses into a single { findings: [...] } envelope.
+jq -s 'map(.findings[]) | { findings: . }' "$SCRATCH"/page-*.json > "$ALL_FINDINGS"
 
-# ---- Filter to vendorCreatedAt <= release-date ----
+echo "Total findings fetched: $(jq '.findings | length' "$ALL_FINDINGS")"
+
+# ---- Filter to vendorCreatedAt <= release-date, write JSON output ----
 echo "Filtering findings to vendorCreatedAt <= $RELEASE_DATE ..."
 
-FINDINGS_FILTERED=$(echo "$FINDINGS_ALL" | jq --arg cutoff "$RELEASE_DATE" '
-  map(select(
+jq --arg cutoff "$RELEASE_DATE" '
+  .findings |= map(select(
     (.packageVulnerabilityDetails.vendorCreatedAt // "9999-12-31T00:00:00Z") |
     split("T")[0] <= $cutoff
   ))
-')
+' "$ALL_FINDINGS" > "${ARTIFACT_BASE}.json"
 
-echo "Findings after release-date filter: $(echo "$FINDINGS_FILTERED" | jq 'length')"
-
-# ---- Write JSON ----
-echo "$FINDINGS_FILTERED" | jq '{"findings": .}' > "${ARTIFACT_BASE}.json"
+echo "Findings after release-date filter: $(jq '.findings | length' "${ARTIFACT_BASE}.json")"
 echo "Written: ${ARTIFACT_BASE}.json"
 
 # ---- Write CSV ----
-echo "$FINDINGS_FILTERED" | jq -r '
-  ["CVE ID","Severity","CVSS Score","CVE Date","Package","Installed Version","Fixed In","Description"],
-  (.[] |
+# Rows are emitted at one-per-(name, packageManager, version, fixedInVersion)
+# tuple per finding. vulnerablePackages entries that differ only by filePath
+# (e.g., the same Go binary at /usr/bin/foo and /foo/foo) collapse into a
+# single row whose File Paths cell lists all paths. See design.md D6.
+jq -r '
+  ["CVE ID","Severity","CVSS Score","CVE Date","Package","Package Manager","Installed Version","Fixed In","File Paths","Description"],
+  (.findings[] |
     . as $f |
     ($f.packageVulnerabilityDetails.cvss |
       map(select(.source == "NVD")) | first //
       $f.packageVulnerabilityDetails.cvss[0] //
       {"baseScore": null}
     ) as $cvss |
-    ($f.packageVulnerabilityDetails.vulnerablePackages // [{}]) | .[] |
-    [
-      ($f.packageVulnerabilityDetails.vulnerabilityId // ""),
-      ($f.severity // ""),
-      ($cvss.baseScore | if . == null then "" else tostring end),
-      ($f.packageVulnerabilityDetails.vendorCreatedAt | if . then split("T")[0] else "" end),
-      (.name // ""),
-      (.version // ""),
-      (.fixedInVersion // ""),
-      ($f.description // "" | gsub("\n"; " ") | gsub(","; ";"))
-    ]
+    ($f.packageVulnerabilityDetails.vulnerablePackages // [{}])
+    | group_by([(.name // ""), (.packageManager // ""), (.version // ""), (.fixedInVersion // "")])
+    | .[]
+    | . as $group
+    | ($group[0]) as $p
+    | ($group | map(.filePath // "") | unique | map(select(. != "")) | join(", ")) as $paths
+    | [
+        ($f.packageVulnerabilityDetails.vulnerabilityId // ""),
+        ($f.severity // ""),
+        ($cvss.baseScore | if . == null then "" else tostring end),
+        ($f.packageVulnerabilityDetails.vendorCreatedAt | if . then split("T")[0] else "" end),
+        ($p.name // ""),
+        ($p.packageManager // ""),
+        ($p.version // ""),
+        ($p.fixedInVersion // ""),
+        $paths,
+        ($f.description // "" | gsub("\n"; " ") | gsub(","; ";"))
+      ]
   ) |
   @csv
-' > "${ARTIFACT_BASE}.csv"
+' "${ARTIFACT_BASE}.json" > "${ARTIFACT_BASE}.csv"
 echo "Written: ${ARTIFACT_BASE}.csv"
 
 # ---- Write HTML (via inspector2-scan-report.jq) ----

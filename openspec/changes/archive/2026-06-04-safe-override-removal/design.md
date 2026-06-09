@@ -133,11 +133,13 @@ The verbose explanation in parentheses is opportunistic — included when we can
 ## Migration Plan
 
 1. Implement and merge the changes to `test-overrides.js` in this repo. CI publishes a `-dev` build on the PR; consumer repos can pin to `@dev` to dry-run.
-2. Bump label `bump:minor` on the PR. On merge, `ci.yml` publishes `1.1.0` (assuming current `1.0.3`) and updates the floating `@v1` tag.
+2. Bump label `bump:minor` on the PR. On merge, `ci.yml` publishes the next minor and updates the floating `@v1` tag.
 3. Consumer repos pinned to `@v1` pick up the fix automatically on their next workflow run.
 4. For `IZGateway/izg-configuration-console` specifically: after the new version lands, manually re-add `"postcss": "8.5.15"` and `"ajv": "8.20.0"` to `overrides` if PR #521 has already merged. Then verify the next nightly run reports them as `kept`.
 
-**Rollback:** Consumers can pin to `@v1.0.3` to revert to the previous behavior. The release pipeline does not delete published versions.
+> **As-shipped note:** PR #6 (`IGDD-2967 - override removal check`) merged to `main` on 2026-06-04 **without** the `bump:minor` label, so `ci.yml` defaulted to a **patch** bump and published **`1.0.5`** (not the `1.1.0` minor this plan anticipated). The floating `@v1` tag advanced to the `v1.0.5` release commit. This was accepted as-is — the code is shipped and consumable via `@v1` / `@v1.0.5`; the patch-vs-minor distinction is cosmetic. See tasks 7.2/7.3 for the record.
+
+**Rollback:** Consumers can pin to `@v1.0.4` to revert to the previous behavior. The release pipeline does not delete published versions.
 
 ## Open Questions
 

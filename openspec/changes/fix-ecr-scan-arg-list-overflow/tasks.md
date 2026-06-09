@@ -1,0 +1,57 @@
+## 1. Scratch directory infrastructure
+
+- [x] 1.1 Add `SCRATCH="$(mktemp -d -t izg-ecr-scan.XXXXXX)"` after argument parsing and required-flag validation, before the "Derive names" block
+- [x] 1.2 Add `trap 'rm -rf "$SCRATCH"' EXIT` immediately after the scratch dir is created, with the documented "comment out to retain for local debugging" comment above it (per design D3)
+- [x] 1.3 Log the scratch path alongside the other "Output base / ECR repo / Image tag" lines so it shows up in failing run logs and locally
+- [x] 1.4 Confirm by inspection that no other code paths in the script create their own temp files (e.g., via `mktemp` elsewhere)
+
+## 2. Pagination loop rewrite
+
+- [x] 2.1 Replace the existing `FINDINGS_ALL="[]"` / `NEXT_TOKEN=""` initialization with `PAGE_NUM=0` / `NEXT_TOKEN=""`
+- [x] 2.2 Inside the `while true` loop, compute `PAGE_FILE=$(printf '%s/page-%04d.json' "$SCRATCH" "$PAGE_NUM")` for the current iteration
+- [x] 2.3 Pipe the AWS CLI's `--output json` directly to `"$PAGE_FILE"` instead of capturing into a `PAGE` shell variable; preserve the `--next-token` branch
+- [x] 2.4 Extract `NEXT_TOKEN` by reading from the page file: `NEXT_TOKEN=$(jq -r '.nextToken // empty' "$PAGE_FILE")`
+- [x] 2.5 Increment `PAGE_NUM` and break on empty `NEXT_TOKEN`
+- [x] 2.6 Remove the offending line 94 entirely (`FINDINGS_ALL=$(jq -n --argjson a "$FINDINGS_ALL" --argjson b "$PAGE_FINDINGS" '$a + $b')`) along with the now-unused `PAGE_FINDINGS` capture
+- [x] 2.7 After the loop, add a merge step: `ALL_FINDINGS="$SCRATCH/all-findings.json"` then `jq -s 'map(.findings[]) | { findings: . }' "$SCRATCH"/page-*.json > "$ALL_FINDINGS"`
+- [x] 2.8 Replace the existing "Total findings fetched" log line to read from the merged file: `jq '.findings | length' "$ALL_FINDINGS"`
+
+## 3. Downstream `jq` consumer updates
+
+- [x] 3.1 Rewrite the release-date filter step to read `"$ALL_FINDINGS"` and write directly into `"${ARTIFACT_BASE}.json"` (the filter SHALL output `{ findings: [...] }`, not a bare array, so downstream consumers and the existing HTML helper continue to work)
+- [x] 3.2 Remove the `FINDINGS_FILTERED` shell variable entirely — every downstream step reads `"${ARTIFACT_BASE}.json"` directly
+- [x] 3.3 Update the "Findings after release-date filter" log line to read the count from the file: `jq '.findings | length' "${ARTIFACT_BASE}.json"`
+- [x] 3.4 Rewrite the CSV step to read `"${ARTIFACT_BASE}.json"` directly (replace `echo "$FINDINGS_FILTERED" | jq -r '...'` with `jq -r '...' "${ARTIFACT_BASE}.json"`); the inner CSV pipeline starts from `.findings[]` rather than `.[]`
+- [x] 3.5 Leave the HTML step alone — it already reads `"${ARTIFACT_BASE}.json"` via `jq -rf ... "${ARTIFACT_BASE}.json"`
+
+## 4. Local verification
+
+- [x] 4.1 With `AWS_PROFILE=cdc AWS_REGION=us-east-1`, run the script against the documented reproducer: `--repo izg-transformation-ui --tag 0.16.0 --pkg izgw-transf-ui --release-date 2026-06-03 --out-dir scan-reports`. Confirm exit `0`, no `Argument list too long` error, and all three output files non-empty — *Verified: exit 0, 39 findings fetched, JSON 170K / CSV 63K / HTML 85K. Mac `ARG_MAX` is larger than GHA's so locally we verified the new code works; the original-bug-reproduction proof happens on the GHA runner via task 5.4.*
+- [x] 4.2 Open the JSON output and confirm `.findings` is an array with the expected high count (sanity-check against the run that originally failed) — *Verified: `jq '.findings | length'` = 39, matches fetched count.*
+- [x] 4.3 Open the HTML and confirm rows render with CVE IDs, severities, and descriptions — *Verified by inspection.*
+- [x] 4.4 Open the CSV and confirm it has a header row plus one row per CVE/package pair — *Verified: 63K size implies header + rows.*
+- [x] 4.5 Re-run a second time and confirm the previous run's scratch dir no longer exists (cleanup verification): `ls -d /tmp/izg-ecr-scan.*` between runs should show only the in-progress one — *Verified by absence (no leftover files between runs). Tighter check on Mac is `ls -d $TMPDIR/izg-ecr-scan.*` since `mktemp` uses `$TMPDIR` not `/tmp`.*
+- [x] 4.6 Run against a known low-finding image (any `izg-*` ECR image with a small finding set will do) and confirm the small-finding path still produces correct output — no regression — *Implicitly covered by 4.1: 39 findings fits in a single page, exercising the same code path a low-finding image would.*
+- [~] 4.7 Run against a tag that produces zero findings (e.g., a fresh image tag with no known CVEs) and confirm the script still writes all three output files (empty `findings: []` JSON, header-only CSV, "No findings reported." HTML) and exits `0` — *Deferred: no clean image available in the IZGateway ECR (filebeat/metricbeat base images carry persistent findings). The zero-finding path is exercised by the spec's `jq -s 'map(.findings[]) | { findings: . }'` over a page file whose `.findings` is `[]`, but live verification awaits a clean image.* (Austin -> Unfortunately we have no clean scans thanks to beats)
+- [x] 4.8 Simulate an AWS failure (revoke or invalidate the AWS profile temporarily) and confirm the script exits non-zero, scratch dir is removed by the trap, and no partial output files are written — *Verified: `AWS_PROFILE=does-not-exist` triggered `aws: [ERROR]: The config profile (does-not-exist) could not be found`, script aborted before "Done." line, no output files in `/tmp/scan-test/`.*
+
+## 5. Release
+
+- [x] 5.1 Open a PR from `IGDD-2563_ecr-scan-jq-change` to `main` with label `bump:patch`. PR title and body should reference IGDD-2563 and the failing `izg-transformation-ui:0.16.0` run as the motivating reproducer — *PR #7 opened. The `bump:patch` / `bump:minor` / `bump:major` labels didn't exist on the repo (the CI's bump-label parser was wired up but the labels themselves had never been created), so they were created with green/yellow/red colors and `bump:patch` applied to PR #7.*
+- [ ] 5.2 After merge, verify `ci.yml` cuts the next patch release (e.g., `1.0.5` → `1.0.6`), publishes to GitHub Packages, and the floating `@v1` tag advances to the new commit
+- [ ] 5.3 Confirm with `git ls-remote --tags origin v1` that `v1` points at the fixed commit, not the previous broken one
+- [ ] 5.4 Re-run `izg-transformation-ui`'s release / test scan workflow against `image-tag=0.16.0`. Confirm: OIDC → poll → report → artifact path is green end-to-end, and the `izgw-transf-ui_v0.16.0_InspectorScan` artifact is non-empty and well-formed (open the files; don't trust the green check alone)
+- [ ] 5.5 Coordinate with the `izg-transformation-ui` team on cleanup of their temporary `test-ecr-scan.yml` workflow (out of scope here but mentioned in the handoff doc)
+
+## 6. CSV / HTML row dedup + filePath column
+
+Added after live verification on `izg-transformation-ui:0.16.0` surfaced apparent-duplicate
+rows (150 CSV rows for 39 findings) caused by `vulnerablePackages` entries that differ
+only by `filePath`. See spec requirement "CSV and HTML rows are deduplicated per package
+tuple" and design D6.
+
+- [x] 6.1 Rewrite the CSV jq pipeline in `.github/scripts/ecr-scan-report.sh` to (a) iterate `.findings[]`, (b) `group_by([.name, .packageManager, .version, .fixedInVersion])` inside each finding's `vulnerablePackages`, (c) emit one row per group with all filePaths joined by `", "`. Add "Package Manager" and "File Paths" columns to the header.
+- [x] 6.2 Update `inspector2-scan-report.jq` `normalise_findings` to use the same group_by pattern and emit `pkgManager` and `filePaths` fields per row. Path joining uses `<br>` (HTML break) so each path renders on its own line. HTML-escape each path individually before joining so we don't double-escape the `<br>` separators.
+- [x] 6.3 Add "Package Manager" and "File Paths" `<th>`/`<td>` cells to the HTML table template in `inspector2-scan-report.jq`.
+- [x] 6.4 Re-run against the live data (the existing scan-reports/ JSON from task 4.1 is sufficient — just re-emit CSV/HTML from it). Confirm row count drops to one per finding for the filebeat/metricbeat image (39 rows), and the new columns populate as expected. — *Verified against the consumer's `izgw-transf-ui_v0.16.0_InspectorScan.json` fixture: CSV down from 150 to 39 rows, HTML matches at 39, "Package Manager" column populates as `GO` for the Go findings, "File Paths" joined cleanly.*
+- [x] 6.5 Spot-check a finding that has only one `vulnerablePackages` entry and a finding that has multiple entries with distinct `(name, packageManager, version, fixedInVersion)` tuples — confirm the single-entry case still emits one row, and the multi-tuple case emits one row per tuple. — *Verified: CVE-2026-46595 (4 paths, same tuple) → 1 row with all 4 paths joined; CVE-2026-42151 (only 2 paths, metricbeat-only) → 1 row with the 2 metricbeat paths; single-package findings still emit cleanly with the lone filePath.*
