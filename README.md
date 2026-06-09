@@ -272,9 +272,14 @@ Each override receives one of three outcomes:
 
 | Code | Meaning                                                                                          |
 | ---- | ------------------------------------------------------------------------------------------------ |
-| `0`  | Evaluation completed for every override. Some, all, or none may have been removed.               |
-| `1`  | Pre-evaluation error (missing/malformed `package.json` or `package-lock.json`, scratch setup failure). |
-| `2`  | Evaluation completed, but at least one override ended in `skipped`. Calling workflows should treat as visible-but-non-fatal. |
+| `0`  | Evaluation completed. Overrides may have been removed, kept, or skipped — all are normal outcomes. |
+| `1`  | Genuine failure before/while evaluating: missing or unparseable `package.json` / `package-lock.json`, scratch setup failure, or an uncaught exception. |
+
+A `skipped` outcome (e.g. an aliased `npm:<pkg>@<range>` override that isn't valid
+semver, or a nested override object) is **not** an error and does not affect the exit
+code. Callers detect whether `package.json` changed via `git diff`, the same contract
+used by `update-overrides` and `fix-vulnerabilities` — they should invoke this script
+without an error guard and expect `0` on any successful run.
 
 **Example:**
 ```bash

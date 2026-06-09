@@ -39,15 +39,15 @@
 ## 5. Exit codes
 
 - [x] 5.1 If any pre-evaluation failure occurs (missing `package.json` / `package-lock.json`, JSON parse failure, scratch setup failure before any trial ran), exit with code `1`
-- [x] 5.2 If at least one override ended in `skipped`, exit with code `2` after writing the summary and any `removed` mutations
-- [x] 5.3 Otherwise exit with code `0`
+- [x] 5.2 ~~If at least one override ended in `skipped`, exit with code `2` after writing the summary and any `removed` mutations~~ — **superseded by IGDD-2967 (PR #8):** a `skipped` outcome is a normal result and exits `0`; only genuine failure (task 5.1) exits non-zero. The dedicated `2` code caused false nightly-workflow failures in Configuration Console and Transform UI.
+- [x] 5.3 Otherwise exit with code `0` (overrides removed, kept, or skipped are all clean `0` exits — see 5.2)
 - [x] 5.4 Replace the current bare `process.exit(0)` early-return (when no overrides are present) with the new exit-code policy — empty `overrides` is still a clean `0` exit
 
 ## 6. Verification against the regression case
 
 - [x] 6.1 In a scratch checkout of `IZGateway/izg-configuration-console` (at the commit prior to PR #521), re-add `"postcss": "8.5.15"` and `"ajv": "8.20.0"` to `overrides` if needed, run the updated `test-overrides.js`, and confirm both are classified `kept` — *postcss correctly `kept` (trial introduces `next/.../postcss@8.4.31` below floor); ajv correctly `removed` because debug-mode trial showed `node_modules/ajv` resolves to 8.20.0 with or without the override. The concern doc's speculation that ajv was at risk was disproved by the trial — its top-level resolution is the same with or without the override*
 - [x] 6.2 In the same checkout, add a deliberately stale override (e.g., a package whose floor is already met by the natural resolution) and confirm it is classified `removed` — *Three real-world examples observed in the same run: `fast-uri@^3.1.2`, `http-proxy-agent@^7.0.2`, `qs@^6.15.2` all correctly classified `removed`*
-- [x] 6.3 Simulate a registry failure (e.g., temporarily point `.npmrc` at an unreachable registry) and confirm the override is classified `skipped` and the script exits with code `2` — *Verified with a synthetic fixture: stubbed `npm` exited non-zero with a simulated `ECONNREFUSED` stderr. Override was classified `skipped` (reason captured the npm stderr), exit code was `2`, and `package.json` was left untouched.*
+- [x] 6.3 Simulate a registry failure (e.g., temporarily point `.npmrc` at an unreachable registry) and confirm the override is classified `skipped` and the script exits cleanly — *Verified with a synthetic fixture: stubbed `npm` exited non-zero with a simulated `ECONNREFUSED` stderr. Override was classified `skipped` (reason captured the npm stderr) and `package.json` was left untouched. **Note (IGDD-2967, PR #8):** this run originally asserted exit code `2`; under the two-state contract a `skipped` outcome now exits `0`.*
 - [x] 6.4 Confirm that running the script twice in a row against the same tree produces the same `package.json` on the second run (idempotency) — *Two consecutive runs against `izg-configuration-console` produced byte-identical classifications and identical post-mutation `package.json`*
 - [x] 6.5 Confirm `node_modules`, `package-lock.json`, and any other files in the consumer's CWD are unchanged after a run (only `package.json` is touched, and only when overrides were removed) — *Verified during live runs against `izg-configuration-console`; only `package.json` was modified*
 
