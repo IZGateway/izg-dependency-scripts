@@ -47,7 +47,7 @@ jobs:
           aws-region: ${{ inputs.aws-region }}
 
       - name: Checkout scripts from izg-dependency-scripts
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: IZGateway/izg-dependency-scripts
           ref: v1
