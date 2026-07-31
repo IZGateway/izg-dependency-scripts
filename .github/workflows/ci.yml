@@ -47,7 +47,7 @@ jobs:
           ref: ${{ inputs.ref || github.head_ref || github.ref }}
 
       - name: Set up Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: '24.x'
           registry-url: 'https://npm.pkg.github.com/'
@@ -109,7 +109,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: '24.x'
           registry-url: 'https://npm.pkg.github.com/'
