@@ -116,6 +116,26 @@ function getLatestCompatibleVersion(packageName, currentVersion) {
 }
 
 /**
+ * True if adopting targetVersion for a package currently pinned at currentVersionStr
+ * (e.g. "^8.72.1") would be a downgrade. npm audit's fixAvailable.version is not always
+ * higher than the installed version — when a vulnerable range covers every version up to
+ * and including the current one with no patched release above it yet, fixAvailable points
+ * *backward* to the last safe version below the range (see IGDD-3645: @typescript-eslint
+ * advisory range "6.16.0 - 8.72.2" with no fix above 8.72.2 yet resolves to "6.15.0").
+ * Unparseable versions are treated as "not a downgrade" so a malformed pin doesn't block
+ * a legitimate fix. Uses strict gt (not gte) so a target equal to the current version is
+ * reported as satisfied, not as a downgrade requiring manual review.
+ */
+function wouldDowngrade(currentVersionStr, targetVersion) {
+  if (!currentVersionStr) return false;
+  try {
+    return semver.gt(currentVersionStr.replace(/^[\^~>=]+/, ''), targetVersion);
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
  * When brace-expansion is globally overridden to v5+, add a scoped eslint override
  * pinning it to the latest v4.x within eslint's dependency tree.
  *
@@ -202,10 +222,21 @@ for (const [pkgName, vulnData] of Object.entries(auditData.vulnerabilities)) {
         
         if (directRelatedPackages.length > 1) {
           // Multiple related packages are direct dependencies
-          // Update all of them together to maintain version consistency
+          // Update all of them together to maintain version consistency —
+          // but never downgrade a package that's already past targetVersion.
+          const downgraded = directRelatedPackages.filter(relatedPkg => {
+            const currentPinned = packageJson.dependencies?.[relatedPkg] || packageJson.devDependencies?.[relatedPkg];
+            return wouldDowngrade(currentPinned, targetVersion);
+          });
+
+          if (downgraded.length > 0) {
+            console.log(`⚠ ${pkgName}: Suggested fix ^${targetVersion} would downgrade ${downgraded.join(', ')} - requires manual review`);
+            continue;
+          }
+
           console.log(`   → Found ${directRelatedPackages.length} related packages as direct deps: ${directRelatedPackages.join(', ')}`);
           console.log(`   → Updating all to version ^${targetVersion} to maintain consistency`);
-          
+
           for (const relatedPkg of directRelatedPackages) {
             const isDevDep = !!packageJson.devDependencies?.[relatedPkg];
             directUpdates[relatedPkg] = {
@@ -216,7 +247,13 @@ for (const [pkgName, vulnData] of Object.entries(auditData.vulnerabilities)) {
           changesDetected = true;
           continue;
         } else {
-          // Only this package is a direct dependency, use override
+          // Only this package is a direct dependency, use override — but never
+          // downgrade below what's already pinned.
+          if (wouldDowngrade(isDirect, targetVersion)) {
+            console.log(`⚠ ${pkgName}: Suggested fix ^${targetVersion} would downgrade current ${isDirect} - requires manual review`);
+            continue;
+          }
+
           console.log(`   → Using override instead of direct update to avoid conflicts`);
           console.log(`➕ ${pkgName}: Adding override ^${targetVersion} (${vulnData.severity})`);
           overridesToAdd[pkgName] = targetVersion;
