@@ -123,12 +123,13 @@ function getLatestCompatibleVersion(packageName, currentVersion) {
  * *backward* to the last safe version below the range (see IGDD-3645: @typescript-eslint
  * advisory range "6.16.0 - 8.72.2" with no fix above 8.72.2 yet resolves to "6.15.0").
  * Unparseable versions are treated as "not a downgrade" so a malformed pin doesn't block
- * a legitimate fix.
+ * a legitimate fix. Uses strict gt (not gte) so a target equal to the current version is
+ * reported as satisfied, not as a downgrade requiring manual review.
  */
 function wouldDowngrade(currentVersionStr, targetVersion) {
   if (!currentVersionStr) return false;
   try {
-    return semver.gte(currentVersionStr.replace(/^[\^~>=]/, ''), targetVersion);
+    return semver.gt(currentVersionStr.replace(/^[\^~>=]+/, ''), targetVersion);
   } catch (e) {
     return false;
   }
@@ -248,9 +249,8 @@ for (const [pkgName, vulnData] of Object.entries(auditData.vulnerabilities)) {
         } else {
           // Only this package is a direct dependency, use override — but never
           // downgrade below what's already pinned.
-          const currentPinned = packageJson.dependencies?.[pkgName] || packageJson.devDependencies?.[pkgName];
-          if (wouldDowngrade(currentPinned, targetVersion)) {
-            console.log(`⚠ ${pkgName}: Suggested fix ^${targetVersion} would downgrade current ${currentPinned} - requires manual review`);
+          if (wouldDowngrade(isDirect, targetVersion)) {
+            console.log(`⚠ ${pkgName}: Suggested fix ^${targetVersion} would downgrade current ${isDirect} - requires manual review`);
             continue;
           }
 
