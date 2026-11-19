@@ -24,6 +24,13 @@ on:
           - Configuration Console
           - Transformation Console
         default: BOM
+  # TEMPORARY (IGDD-2768): lets the self-test run from this branch before it is on main.
+  # Revert this commit before opening the PR.
+  push:
+    branches: [IGDD-2768]
+    paths:
+      - .github/workflows/test-report-ci-failure.yml
+      - .github/actions/report-ci-failure/**
 
 permissions:
   contents: read
@@ -45,7 +52,7 @@ jobs:
         if: failure()
         uses: ./.github/actions/report-ci-failure
         with:
-          component: ${{ inputs.component }}
+          component: ${{ inputs.component || 'BOM' }}
           smtp-username: ${{ secrets.MAIL_USERNAME }}
           smtp-password: ${{ secrets.MAIL_PASSWORD }}
           to: ${{ secrets.JIRA_ALERT_EMAIL }}
