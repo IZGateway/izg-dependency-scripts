@@ -1,0 +1,51 @@
+# Self-test for .github/actions/report-ci-failure.
+#
+# This run is RED BY DESIGN: the "Simulated failure" step always fails, and the
+# report step then sends a real email to the alert address, which files a REAL
+# IGDD test ticket. The person who runs it closes that ticket afterwards.
+#
+# Expected subject: "IZG CI failure: <component> - Test report-ci-failure - Simulated failure"
+# Run it twice with the same input to check repeat detection: the second run should
+# add a comment to the first ticket rather than open a new one.
+#
+# workflow_dispatch only works for workflow files on the default branch (main),
+# so this can only be run after it has been merged.
+
+name: Test report-ci-failure
+
+on:
+  workflow_dispatch:
+    inputs:
+      component:
+        description: Component to report against
+        type: choice
+        options:
+          - BOM
+          - Configuration Console
+          - Transformation Console
+        default: BOM
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  self-test:
+    name: Simulate a failure and report it
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Simulated failure
+        run: exit 1
+
+      # No reason input, so failed-step detection is exercised.
+      - name: Report failure to Opsgenie (Jira)
+        if: failure()
+        uses: ./.github/actions/report-ci-failure
+        with:
+          component: ${{ inputs.component }}
+          smtp-username: ${{ secrets.MAIL_USERNAME }}
+          smtp-password: ${{ secrets.MAIL_PASSWORD }}
+          to: ${{ secrets.JIRA_ALERT_EMAIL }}

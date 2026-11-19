@@ -1,0 +1,175 @@
+name: Report CI Failure
+description: >
+  Reports a failed CI job to the IZ Gateway ticketing path. The action emails the
+  alert address passed in "to", and Opsgenie turns that email into an IGDD Jira ticket.
+  The action sends a report every time it runs. The caller decides when to report
+  through the step's if: condition, for example
+  "failure() && github.event_name == 'schedule'".
+
+  The subject "IZG CI failure: <component> - <workflow> - <failure description>" is
+  the repeat-detection key. It never contains a date, run ID or SHA, so the same
+  failure always produces the same subject, and Opsgenie can add a repeat as a
+  comment on the existing ticket. Renaming a step changes the key.
+
+  The body holds run metadata and a link to the run only. It never includes logs or
+  command output, because the calling repositories are public.
+
+  Callers must grant "actions: read" so the action can look up which step failed.
+  Without it, the failure description falls back to "unknown step".
+
+  IMPORTANT: WHY SECRETS ARE PASSED AS INPUTS
+  GitHub Actions composite actions do NOT have access to the secrets context.
+  Inside a composite action, any secrets.* expression always evaluates to an empty string
+  with no error or warning. The calling workflow must therefore forward the SMTP
+  credentials and the alert address explicitly (org secrets MAIL_USERNAME,
+  MAIL_PASSWORD and JIRA_ALERT_EMAIL). Never hardcode the alert address in this
+  file or in a caller: these repositories are public, and a visible inbound address
+  would let anyone create tickets.
+
+inputs:
+  component:
+    description: Jira component name, for example "BOM", "Configuration Console" or "Transformation Console"
+    required: true
+  smtp-username:
+    description: >
+      SMTP username. Use the org secret MAIL_USERNAME. Must be passed explicitly,
+      because composite actions cannot read secrets.
+    required: true
+  smtp-password:
+    description: >
+      SMTP password. Use the org secret MAIL_PASSWORD. Must be passed explicitly,
+      because composite actions cannot read secrets.
+    required: true
+  to:
+    description: >
+      Alert address that creates the ticket. Use the org secret JIRA_ALERT_EMAIL.
+      There is no default; an empty value fails the action.
+    required: true
+  reason:
+    description: >
+      Failure description to use instead of the detected failed step. Use it for
+      warning-only failures where no step failed, such as a PR left open for review.
+    required: false
+    default: ''
+  pr-url:
+    description: URL of the pull request the run was trying to merge, if any
+    required: false
+    default: ''
+  github-token:
+    description: Token used only to look up the failed step through the Actions jobs API (needs actions read)
+    required: false
+    default: ${{ github.token }}
+  server-address:
+    description: SMTP server
+    required: false
+    default: email-smtp.us-east-1.amazonaws.com
+  server-port:
+    description: SMTP port (implicit TLS)
+    required: false
+    default: '465'
+  from:
+    description: Sender address
+    required: false
+    default: GithubActionNotification <GithubActionNotification@izgateway.org>
+
+runs:
+  using: composite
+  steps:
+    - name: Check required inputs
+      shell: bash
+      env:
+        COMPONENT: ${{ inputs.component }}
+        SMTP_USERNAME: ${{ inputs.smtp-username }}
+        SMTP_PASSWORD: ${{ inputs.smtp-password }}
+        ALERT_TO: ${{ inputs.to }}
+      run: |
+        missing=0
+        if [ -z "$ALERT_TO" ]; then
+          echo "::error title=report-ci-failure::The alert address input 'to' is empty. Pass secrets.JIRA_ALERT_EMAIL and make sure that org secret is shared with this repository."
+          missing=1
+        fi
+        if [ -z "$SMTP_USERNAME" ] || [ -z "$SMTP_PASSWORD" ]; then
+          echo "::error title=report-ci-failure::SMTP credentials are empty. Pass secrets.MAIL_USERNAME and secrets.MAIL_PASSWORD and make sure those org secrets are shared with this repository."
+          missing=1
+        fi
+        if [ -z "$COMPONENT" ]; then
+          echo "::error title=report-ci-failure::The 'component' input is empty."
+          missing=1
+        fi
+        exit "$missing"
+
+    - name: Compose report
+      id: compose
+      shell: bash
+      env:
+        COMPONENT: ${{ inputs.component }}
+        REASON: ${{ inputs.reason }}
+        PR_URL_INPUT: ${{ inputs.pr-url }}
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: |
+        set -uo pipefail
+
+        # 1. Failure description: reason, then the last failed step in this job, then "unknown step".
+        #    The last failed step is used so an earlier continue-on-error step that failed
+        #    is not mistaken for the step that stopped the job. This job is matched by runner
+        #    name so another job's failure is never reported as this one's.
+        description="$REASON"
+        if [ -z "$description" ]; then
+          # $ENV.RUNNER_NAME is read by jq, not by the shell.
+          # shellcheck disable=SC2016
+          description="$(gh api --paginate \
+            "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/attempts/${GITHUB_RUN_ATTEMPT}/jobs?per_page=100" \
+            --jq '.jobs[] | select(.runner_name == $ENV.RUNNER_NAME) | [.steps[]? | select(.conclusion == "failure") | .name] | last // empty' \
+            2>/dev/null | tail -n 1)" || description=""
+          if [ -z "$description" ]; then
+            echo "::warning title=report-ci-failure::Could not determine the failed step (does the workflow grant actions: read?). Reporting it as 'unknown step'."
+          fi
+        fi
+        [ -n "$description" ] || description="unknown step"
+
+        # 2. Subject: the repeat-detection key. One line, at most 130 characters
+        #    (the Opsgenie alert message limit), no date, run ID or SHA.
+        subject="IZG CI failure: ${COMPONENT} - ${GITHUB_WORKFLOW} - ${description}"
+        subject="$(printf '%s' "$subject" | tr '\r\n' '  ')"
+        subject="${subject:0:130}"
+        one_line_description="$(printf '%s' "$description" | tr '\r\n' '  ')"
+
+        # 3. Body: run metadata and a link only. Never logs or command output.
+        run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+        body="**IZ Gateway CI failure**"$'\n\n'
+        body+="- **Repository:** ${GITHUB_REPOSITORY}"$'\n'
+        body+="- **Workflow:** ${GITHUB_WORKFLOW}"$'\n'
+        body+="- **Event:** ${GITHUB_EVENT_NAME}"$'\n'
+        body+="- **Ref:** ${GITHUB_REF}"$'\n'
+        body+="- **Commit:** ${GITHUB_SHA}"$'\n'
+        body+="- **Run:** ${run_url}"$'\n'
+        body+="- **Failure:** ${one_line_description}"$'\n'
+        if [ -n "$PR_URL_INPUT" ]; then
+          body+="- **Pull request:** ${PR_URL_INPUT}"$'\n'
+        fi
+        body+="- **Reported at (UTC):** $(date -u '+%Y-%m-%d %H:%M:%S')"$'\n'
+        body+="- **Dedup key:** ${subject}"$'\n'
+
+        delimiter="EOF_$(openssl rand -hex 16)"
+        {
+          echo "subject=${subject}"
+          echo "body<<${delimiter}"
+          printf '%s\n' "$body"
+          echo "${delimiter}"
+        } >> "$GITHUB_OUTPUT"
+
+        echo "Reporting: ${subject}"
+
+    - name: Send report
+      uses: dawidd6/action-send-mail@v17
+      with:
+        server_address: ${{ inputs.server-address }}
+        server_port: ${{ inputs.server-port }}
+        secure: true
+        username: ${{ inputs.smtp-username }}
+        password: ${{ inputs.smtp-password }}
+        subject: ${{ steps.compose.outputs.subject }}
+        to: ${{ inputs.to }}
+        from: ${{ inputs.from }}
+        convert_markdown: true
+        body: ${{ steps.compose.outputs.body }}

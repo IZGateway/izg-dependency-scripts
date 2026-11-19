@@ -220,6 +220,93 @@ Adding this permission to all service OIDC roles is tracked in
 
 ---
 
+### `report-ci-failure` — File a ticket when a CI job fails
+
+**Path:** `.github/actions/report-ci-failure/action.yml`
+
+Composite action that reports a failed job by email to the alert address. Opsgenie turns the
+email into an IGDD Jira ticket. Add it as the **last step** of the job you want reported.
+It sends a report every time it runs, so the step's `if:` decides when to report.
+
+The email subject is the repeat-detection key:
+
+```
+IZG CI failure: <component> - <workflow> - <failure description>
+```
+
+The failure description is the `reason` input if given. Otherwise it is the name of the
+**last** failed step in the calling job, so an earlier `continue-on-error` step that failed
+is not picked. If the lookup fails, it is `unknown step`. The subject has no date, run ID or
+SHA, so the same failure always produces the same subject, and Opsgenie can add a repeat as
+a comment on the open ticket. A different failed step opens a new ticket. **Step names
+matter:** renaming a step changes the key. The subject is cut to one line of 130 characters
+(the Opsgenie alert message limit).
+
+The body contains run metadata and a link to the run only: repository, workflow, event, ref,
+commit, run URL, failure, PR URL (if given), UTC time, and the dedup key. It never includes
+logs, because the calling repositories are public.
+
+#### Inputs
+
+| Input | Required | Default | Description |
+|---|---|---|---|
+| `component` | ✅ | — | Jira component name, e.g. `BOM`, `Configuration Console`, `Transformation Console` |
+| `smtp-username` | ✅ | — | Pass `secrets.MAIL_USERNAME` |
+| `smtp-password` | ✅ | — | Pass `secrets.MAIL_PASSWORD` |
+| `to` | ✅ | — | Pass `secrets.JIRA_ALERT_EMAIL`. Empty fails the step. |
+| `reason` | ❌ | `''` | Failure description to use instead of the detected step (for warning-only failures) |
+| `pr-url` | ❌ | `''` | PR the run was trying to merge |
+| `github-token` | ❌ | `github.token` | Used only for the failed-step lookup |
+| `server-address` | ❌ | `email-smtp.us-east-1.amazonaws.com` | SMTP server (SES) |
+| `server-port` | ❌ | `465` | SMTP port (implicit TLS) |
+| `from` | ❌ | `GithubActionNotification <GithubActionNotification@izgateway.org>` | Sender |
+
+Secrets are passed as inputs because composite actions cannot read `secrets.*` (same as
+`cve-scan`). **Never hardcode the alert address** in a workflow: these repositories are public,
+and a visible inbound address would let anyone create tickets.
+
+#### Caller requirements
+
+- Grant `actions: read` in the workflow's `permissions:` so the failed step can be looked up.
+  Without it, the report still goes out, as `unknown step`.
+- Make it the last step of the job.
+- Gate it with `if: failure() && github.event_name == 'schedule'`, so manual runs don't file
+  tickets.
+- The org secrets `MAIL_USERNAME`, `MAIL_PASSWORD` and `JIRA_ALERT_EMAIL` must be shared
+  with the calling repository.
+
+#### Usage
+
+```yaml
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  update:
+    steps:
+      # ... the job's own steps ...
+
+      - name: Report failure to Opsgenie (Jira)
+        if: failure() && github.event_name == 'schedule'
+        uses: IZGateway/izg-dependency-scripts/.github/actions/report-ci-failure@v1
+        with:
+          component: Configuration Console
+          smtp-username: ${{ secrets.MAIL_USERNAME }}
+          smtp-password: ${{ secrets.MAIL_PASSWORD }}
+          to: ${{ secrets.JIRA_ALERT_EMAIL }}
+          pr-url: ${{ env.PR_URL }}
+```
+
+#### Self-test
+
+`.github/workflows/test-report-ci-failure.yml` (manual run only) fails a step on purpose and
+reports it, so it is red by design and files a real test ticket that the person running it
+closes. Run it twice with the same input to check that the second run becomes a comment on
+the first ticket.
+
+---
+
 ## 🔧 Commands
 
 ### `fix-vulnerabilities`

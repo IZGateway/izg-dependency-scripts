@@ -10,6 +10,8 @@ Two distinct products live here:
 
 2. **Shared GitHub Actions** — Reusable CI/CD building blocks for IZGateway projects:
    - `.github/actions/cve-scan/` — OWASP Dependency Check composite action (in use today)
+   - `.github/actions/report-ci-failure/` — emails the Opsgenie alert address to file an
+     IGDD ticket when a CI job fails (see `openspec/changes/report-ci-failure-action/`)
    - `.github/workflows/ecr-scan-report.yml` — AWS Inspector2 ECR scan reusable workflow
      *(in progress — see `openspec/changes/cve-scan-action/`)*
 
@@ -47,6 +49,16 @@ Publishing is fully automated via `ci.yml`. **Do not run `npm publish` manually.
   rationale.
 - The action runs inside the **calling job's workspace** — no artifact round-trip needed to
   access built JARs.
+
+`.github/actions/report-ci-failure/action.yml` follows the same secrets-as-inputs rule
+(`MAIL_USERNAME`, `MAIL_PASSWORD`, `JIRA_ALERT_EMAIL`), plus:
+
+- **Never hardcode the alert address** (no Opsgenie or other inbound address) in the action,
+  its self-test, the README, or any caller. These repos are public; a visible address lets
+  anyone create tickets. It must always arrive through the `to` input from a secret.
+- **The subject is the Opsgenie repeat-detection key.** Never add a date, run ID, run number,
+  attempt or SHA to it, and keep it at most 130 characters.
+- **No logs in the body.** Run metadata and the run link only.
 
 ## ECR scan workflow — in-progress CR
 
