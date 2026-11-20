@@ -43,13 +43,13 @@
 
 ## 5. End-to-end verification (on the branch, temporary push trigger)
 
-- [ ] 5.1 Push to `IGDD-2768`, and confirm:
+- [x] 5.1 Push to `IGDD-2768`, and confirm:
   - one IGDD ticket is created, of type Bug
   - its summary is `IZG CI failure: BOM - Test report-ci-failure - Simulated failure`
   - it has component `BOM` and labels `ci-failure` plus the repeat-detection label
   - its description has the run link and no logs
   - the step outputs are `result=created` and the new key
-- [ ] 5.2 Wait at least a minute, re-run the same run, and confirm the existing ticket gets a comment, no second ticket is created, and `result=commented`
+- [x] 5.2 Wait at least a minute, re-run the same run, and confirm the existing ticket gets a comment, no second ticket is created, and `result=commented` (2026-11-20: run 44813122176 created IGDD-3856; attempt 2 commented on it)
 - [ ] 5.3 Close the test tickets (IGDD-3850, IGDD-3851 from the email route, and the new one) and record the result on IGDD-2768
 
 ## 6. Release

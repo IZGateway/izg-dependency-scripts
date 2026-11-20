@@ -104,7 +104,7 @@ Callers can pass `reason` for soft failures, such as the BOM's "PR left open". O
 
 **Known override in CC:** CC already has repo-level secrets with the same two names, and a repo secret overrides an org secret of the same name. So CC's nightly reports use CC's own repo secrets, while the other repos use the org secrets. That is harmless while both hold CC's credential (the trial). If the org secrets move to another account, also delete or update CC's repo-level secrets, or CC keeps filing tickets as the old account.
 
-**Which account:** open. The trial may use CC's credential; the CveRouter "API User" is the likely long-term account, because it is a non-person account already proven to create IGDD tickets.
+**Which account:** the org secrets authenticate as "API User", the same non-person account the CveRouter Lambda uses (confirmed by the reporter of the 2026-11-20 self-test ticket IGDD-3856). CC's repo-level secrets may hold a different account; see the override note above.
 
 **Empty inputs:** the action fails with a clear error before calling Jira.
 
