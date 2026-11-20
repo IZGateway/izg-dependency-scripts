@@ -1,8 +1,8 @@
 # Self-test for .github/actions/report-ci-failure.
 #
 # This run is RED BY DESIGN: the "Simulated failure" step always fails, and the
-# report step then creates (or comments on) a REAL IGDD Jira ticket. The person who
-# runs it closes that ticket afterwards.
+# report step then creates (or comments on) a REAL IGDD Jira ticket, in the current
+# sprint. The person who runs it closes that ticket afterwards.
 #
 # Expected summary: "IZG CI failure: <component> - Test report-ci-failure - Simulated failure"
 # Run it twice with the same input to check repeat detection: the second run should
@@ -25,13 +25,6 @@ on:
           - Configuration Console
           - Transformation Console
         default: BOM
-  # TEMPORARY (IGDD-2768): lets the self-test run from this branch before it is on main.
-  # Revert this commit before opening the PR.
-  push:
-    branches: [IGDD-2768]
-    paths:
-      - .github/workflows/test-report-ci-failure.yml
-      - .github/actions/report-ci-failure/**
 
 permissions:
   contents: read

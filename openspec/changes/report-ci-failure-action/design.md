@@ -134,7 +134,7 @@ Because the workflow name contains "Test", the summary is distinct from every re
 
 The job sets `permissions: contents: read, actions: read`.
 
-Before merge, the self-test is run from the `IGDD-2768` branch through a temporary `push` trigger, committed separately and reverted before the PR is opened.
+Before merge, the self-test is run from the `IGDD-2768` branch through a temporary `push` trigger, committed separately and removed before the PR is opened.
 
 ### D8. Caller contract
 
@@ -185,7 +185,7 @@ Invalid values, such as an unknown component, are not checked by the action. Jir
 1. Rework the action and self-test on branch `IGDD-2768`. The temporary push trigger stays for now.
 2. An org admin creates `JIRA_API_URL` and `JIRA_API_AUTH_BASE64`, shared with this repo and the three calling repos.
 3. Push to the branch; the self-test runs. Confirm one Bug with the expected summary, component and labels. Re-run after a minute; confirm a comment and no new ticket.
-4. Revert the temporary trigger, then open a PR to `main` labelled `bump:minor`. The existing `validate.yml` actionlint job must pass.
+4. Remove the temporary trigger, then open a PR to `main` labelled `bump:minor`. The existing `validate.yml` actionlint job must pass.
 5. Merge. `ci.yml` releases `v1.1.0` and moves `v1`. No workflow calls the action yet, so this is harmless.
 6. Wire the callers in separate PRs: `izg-configuration-console`, `izg-transformation-ui`, `izgw-bom`.
 

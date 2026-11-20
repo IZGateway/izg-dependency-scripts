@@ -56,7 +56,7 @@
 
 ## 6. Release
 
-- [ ] 6.1 Remove the temporary push trigger from the self-test (a plain revert would conflict, because the file changed after that commit)
+- [x] 6.1 Remove the temporary push trigger from the self-test (a plain revert would conflict, because the file changed after that commit)
 - [ ] 6.2 Open a PR to `main` labelled `bump:minor`, and make sure `validate.yml` passes
 - [ ] 6.3 Merge, then confirm `ci.yml` released `v1.1.0` and moved the `v1` tag
 
