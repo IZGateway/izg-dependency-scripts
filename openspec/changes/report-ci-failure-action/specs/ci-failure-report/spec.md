@@ -121,6 +121,10 @@ An empty optional input SHALL leave that field out of the request. `sprint` SHAL
 - **WHEN** a caller passes `components: "Configuration Console, Build / Deploy"`
 - **THEN** the created ticket SHALL have both components
 
+#### Scenario: More than one active sprint
+- **WHEN** `sprint` is `active` and the board has more than one active sprint, because an earlier one was never closed
+- **THEN** the ticket SHALL be added to the active sprint with the latest start date
+
 #### Scenario: Active sprint unavailable
 - **WHEN** `sprint` is `active` (the default) and the board has no active sprint, or the lookup fails
 - **THEN** the action SHALL create the ticket without a sprint and emit a warning

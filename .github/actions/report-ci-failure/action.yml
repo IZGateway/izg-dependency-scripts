@@ -274,7 +274,9 @@ runs:
           if [ "$SPRINT" = "active" ]; then
             jira GET "${site}/rest/agile/1.0/board/${BOARD_ID}/sprint?state=active"
             if ok; then
-              sprint_id="$(printf '%s' "$JIRA_BODY" | jq -r '[.values[]? | select(.state == "active")][0].id // empty' 2>/dev/null)" || sprint_id=""
+              # A board can have more than one active sprint when an old one is never
+              # closed, so take the one that started most recently.
+              sprint_id="$(printf '%s' "$JIRA_BODY" | jq -r '[.values[]? | select(.state == "active")] | sort_by(.startDate // "") | last | .id // empty' 2>/dev/null)" || sprint_id=""
             fi
             if [ -z "$sprint_id" ]; then
               echo "::warning title=report-ci-failure::No active sprint found on board ${BOARD_ID}; creating the ticket in the backlog."

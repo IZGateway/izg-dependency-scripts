@@ -114,7 +114,7 @@ The action removes any trailing `/` and `/rest/api/<n>` from `jira-api-url` to g
 - `POST <site>/rest/api/2/search/jql` to find an open ticket with the label
 - `POST <site>/rest/api/2/issue/<key>/comment` to comment on it
 - `POST <site>/rest/api/2/issue` to create a ticket
-- `GET <site>/rest/agile/1.0/board/<board-id>/sprint?state=active` when `sprint: active`
+- `GET <site>/rest/agile/1.0/board/<board-id>/sprint?state=active` when `sprint: active`. If more than one sprint is active, the one with the latest `startDate` is used: on 2026-11-20 board 27 still had Sprint 42 active after Sprint 43 started, and taking the first result put the self-test ticket IGDD-3857 in the old sprint.
 
 Request bodies are built with `jq -n --arg`, never by string interpolation. Authentication is `Authorization: Basic <jira-auth>`; the header is never echoed. Each call records its HTTP status:
 - A create or comment that does not return 2xx fails the step, showing the status and Jira's `errorMessages` and `errors`.
