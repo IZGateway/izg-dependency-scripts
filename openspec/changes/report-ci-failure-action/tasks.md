@@ -50,8 +50,9 @@
   - its description has the run link and no logs
   - the step outputs are `result=created` and the new key
 - [x] 5.2 Wait at least a minute, re-run the same run, and confirm the existing ticket gets a comment, no second ticket is created, and `result=commented` (2026-11-20: run 44813122176 created IGDD-3856; attempt 2 commented on it)
-- [ ] 5.3 Close the test tickets (IGDD-3850, IGDD-3851 from the email route, and the new one) and record the result on IGDD-2768
-- [ ] 5.4 After making `sprint: active` and `ai-use: NA` the defaults and closing IGDD-3856, push again and confirm the new ticket is in the active sprint of board 27 (IGDD Scrum) with "AI Use" set to NA; then close it (it should close without setting anything by hand)
+- [x] 5.3 Close the test tickets: IGDD-3850 and IGDD-3851 (email route), IGDD-3856, IGDD-3857 and IGDD-3858 (Jira route) — all closed 2026-11-20
+- [x] 5.4 After making `sprint: active` and `ai-use: NA` the defaults and closing IGDD-3856, push again and confirm the new ticket is in the active sprint of board 27 (IGDD Scrum) with "AI Use" set to NA; then close it (it should close without setting anything by hand) (2026-11-20: IGDD-3857 landed in the stale Sprint 42, fixed to pick the latest-started active sprint; IGDD-3858 landed in Sprint 43 with AI Use NA and closed straight from Open)
+- [ ] 5.5 Record the self-test result on IGDD-2768
 
 ## 6. Release
 
