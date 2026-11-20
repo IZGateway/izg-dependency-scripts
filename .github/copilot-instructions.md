@@ -10,6 +10,8 @@ Two distinct products live here:
 
 2. **Shared GitHub Actions** — Reusable CI/CD building blocks for IZGateway projects:
    - `.github/actions/cve-scan/` — OWASP Dependency Check composite action (in use today)
+   - `.github/actions/report-ci-failure/` — creates (or comments on) an IGDD Jira ticket
+     through the Jira REST API when a CI job fails (see `openspec/changes/report-ci-failure-action/`)
    - `.github/workflows/ecr-scan-report.yml` — AWS Inspector2 ECR scan reusable workflow
      *(in progress — see `openspec/changes/cve-scan-action/`)*
 
@@ -47,6 +49,19 @@ Publishing is fully automated via `ci.yml`. **Do not run `npm publish` manually.
   rationale.
 - The action runs inside the **calling job's workspace** — no artifact round-trip needed to
   access built JARs.
+
+`.github/actions/report-ci-failure/action.yml` follows the same secrets-as-inputs rule
+(`JIRA_API_URL`, `JIRA_API_AUTH_BASE64`), plus:
+
+- **Never hardcode a Jira credential** in the action, its self-test, the README, or any caller.
+  These repos are public. It must always arrive through the `jira-auth` input from a secret,
+  and must never be echoed (the `jira()` helper keeps the Authorization header out of logs).
+- **The summary is the repeat-detection key.** The hidden label
+  `ci-failure-<sha1(summary)[:12]>` is derived from it. Never add a date, run ID, run number,
+  attempt or SHA to the summary, and keep it at most 255 characters.
+- **A repeat only comments.** Never change a ticket's fields on a repeat.
+- **No logs in descriptions or comments.** Run metadata and the run link only.
+- Build JSON request bodies with `jq -n --arg`, never by string interpolation.
 
 ## ECR scan workflow — in-progress CR
 

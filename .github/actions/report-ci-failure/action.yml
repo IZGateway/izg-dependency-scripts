@@ -1,0 +1,339 @@
+name: Report CI Failure
+description: >
+  Reports a failed CI job as a Jira ticket through the Jira REST API (version 2).
+  If an open ticket already exists for the same failure, the action adds a comment
+  to it; otherwise it creates a new ticket. The action reports every time it runs.
+  The caller decides when to report through the step's if: condition, for example
+  "failure() && github.event_name == 'schedule'".
+
+  The summary "IZG CI failure: <component> - <workflow> - <failure description>" never
+  contains a date, run ID or SHA, so the same failure always produces the same summary.
+  The ticket carries a hidden label "ci-failure-<first 12 hex of sha1(summary)>", and
+  the action looks for an open ticket (status category not Done) with that label to
+  decide between commenting and creating. Renaming a step changes the key.
+
+  The description and comments hold run metadata and a link to the run only. They
+  never include logs or command output, because the calling repositories are public.
+
+  Callers must grant "actions: read" so the action can look up which step failed.
+  Without it, the failure description falls back to "unknown step".
+
+  IMPORTANT: WHY THE CREDENTIAL IS PASSED AS AN INPUT
+  GitHub Actions composite actions do NOT have access to the secrets context.
+  Inside a composite action, any secrets.* expression always evaluates to an empty
+  string with no error or warning. The calling workflow must therefore forward the
+  Jira URL and credential explicitly (org secrets JIRA_API_URL and
+  JIRA_API_AUTH_BASE64). Never hardcode a credential in this file or in a caller.
+
+inputs:
+  component:
+    description: Component name used in the summary, for example "BOM", "Configuration Console" or "Transformation Console". Also the default Jira component.
+    required: true
+  jira-api-url:
+    description: >
+      Jira REST base URL, for example https://izgateway.atlassian.net/rest/api/2.
+      Use the org secret JIRA_API_URL. Any trailing /rest/api/<n> is removed and
+      version 2 is always used.
+    required: true
+  jira-auth:
+    description: >
+      Base64 of "user-email:api-token". Use the org secret JIRA_API_AUTH_BASE64. Must be
+      passed explicitly, because composite actions cannot read secrets.
+    required: true
+  reason:
+    description: >
+      Failure description to use instead of the detected failed step. Use it for
+      warning-only failures where no step failed, such as a PR left open for review.
+    required: false
+    default: ''
+  pr-url:
+    description: URL of the pull request the run was trying to merge, if any
+    required: false
+    default: ''
+  github-token:
+    description: Token used only to look up the failed step through the Actions jobs API (needs actions read)
+    required: false
+    default: ${{ github.token }}
+  project-key:
+    description: Jira project key
+    required: false
+    default: IGDD
+  issue-type:
+    description: Issue type name for new tickets
+    required: false
+    default: Bug
+  components:
+    description: Comma-separated Jira component names for new tickets. Defaults to the component input.
+    required: false
+    default: ''
+  labels:
+    description: Comma-separated labels for new tickets. The repeat-detection label is always added.
+    required: false
+    default: ci-failure
+  priority:
+    description: Priority name for new tickets, for example "High". Empty uses Jira's default.
+    required: false
+    default: ''
+  assignee-account-id:
+    description: Atlassian account ID to assign new tickets to. Empty uses Jira's default.
+    required: false
+    default: ''
+  epic-key:
+    description: Key of the epic (parent) for new tickets, for example IGDD-1234. Empty sets none.
+    required: false
+    default: ''
+  sprint:
+    description: >
+      "active" (default) adds new tickets to the active sprint of board-id; if there is
+      none, the ticket is created in the backlog with a warning. "none" always uses the
+      backlog.
+    required: false
+    default: active
+  board-id:
+    description: Jira board used for the active-sprint lookup (27 is "IGDD Scrum")
+    required: false
+    default: '27'
+  ai-use:
+    description: >
+      Value of the IGDD "AI Use" dropdown (customfield_10619) on new tickets. Defaults to
+      "NA", because a Bug cannot be moved to a Done status until it is set. Empty leaves
+      the field unset.
+    required: false
+    default: NA
+
+outputs:
+  issue-key:
+    description: Key of the ticket created or commented on
+    value: ${{ steps.report.outputs.issue-key }}
+  issue-url:
+    description: Browse URL of the ticket created or commented on
+    value: ${{ steps.report.outputs.issue-url }}
+  result:
+    description: '"created" or "commented"'
+    value: ${{ steps.report.outputs.result }}
+
+runs:
+  using: composite
+  steps:
+    - name: Check inputs
+      shell: bash
+      env:
+        COMPONENT: ${{ inputs.component }}
+        JIRA_API_URL: ${{ inputs.jira-api-url }}
+        JIRA_AUTH: ${{ inputs.jira-auth }}
+        SPRINT: ${{ inputs.sprint }}
+        BOARD_ID: ${{ inputs.board-id }}
+      run: |
+        bad=0
+        if [ -z "$JIRA_API_URL" ]; then
+          echo "::error title=report-ci-failure::The 'jira-api-url' input is empty. Pass secrets.JIRA_API_URL and make sure that org secret is shared with this repository."
+          bad=1
+        fi
+        if [ -z "$JIRA_AUTH" ]; then
+          echo "::error title=report-ci-failure::The Jira credential input 'jira-auth' is empty. Pass secrets.JIRA_API_AUTH_BASE64 and make sure that org secret is shared with this repository."
+          bad=1
+        fi
+        if [ -z "$COMPONENT" ]; then
+          echo "::error title=report-ci-failure::The 'component' input is empty."
+          bad=1
+        fi
+        case "$SPRINT" in
+          none) ;;
+          active)
+            if [ -z "$BOARD_ID" ]; then
+              echo "::error title=report-ci-failure::'sprint: active' needs a 'board-id'."
+              bad=1
+            fi
+            ;;
+          *)
+            echo "::error title=report-ci-failure::'sprint' must be 'none' or 'active', not '${SPRINT}'."
+            bad=1
+            ;;
+        esac
+        exit "$bad"
+
+    - name: Report to Jira
+      id: report
+      shell: bash
+      env:
+        COMPONENT: ${{ inputs.component }}
+        JIRA_API_URL: ${{ inputs.jira-api-url }}
+        JIRA_AUTH: ${{ inputs.jira-auth }}
+        REASON: ${{ inputs.reason }}
+        PR_URL_INPUT: ${{ inputs.pr-url }}
+        GH_TOKEN: ${{ inputs.github-token }}
+        PROJECT_KEY: ${{ inputs.project-key }}
+        ISSUE_TYPE: ${{ inputs.issue-type }}
+        COMPONENTS_INPUT: ${{ inputs.components }}
+        LABELS_INPUT: ${{ inputs.labels }}
+        PRIORITY: ${{ inputs.priority }}
+        ASSIGNEE: ${{ inputs.assignee-account-id }}
+        EPIC_KEY: ${{ inputs.epic-key }}
+        SPRINT: ${{ inputs.sprint }}
+        BOARD_ID: ${{ inputs.board-id }}
+        AI_USE: ${{ inputs.ai-use }}
+      run: |
+        set -uo pipefail
+
+        # 1. Failure description: reason, then the last failed step in this job, then "unknown step".
+        #    The last failed step is used so an earlier continue-on-error step that failed
+        #    is not mistaken for the step that stopped the job. This job is matched by runner
+        #    name so another job's failure is never reported as this one's.
+        description="$REASON"
+        if [ -z "$description" ]; then
+          # $ENV.RUNNER_NAME is read by jq, not by the shell. Each name is printed as a
+          # JSON string (one line, even if the name has line breaks) and decoded after
+          # the last one is picked. timeout: a hung API call falls back to "unknown step".
+          # shellcheck disable=SC2016
+          description="$(timeout 60 gh api --paginate \
+            "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/attempts/${GITHUB_RUN_ATTEMPT}/jobs?per_page=100" \
+            --jq '.jobs[] | select(.runner_name == $ENV.RUNNER_NAME) | [.steps[]? | select(.conclusion == "failure") | .name] | last // empty | @json' \
+            2>/dev/null | tail -n 1 | jq -r '.' 2>/dev/null)" || description=""
+          if [ -z "$description" ]; then
+            echo "::warning title=report-ci-failure::Could not determine the failed step (does the workflow grant actions: read?). Reporting it as 'unknown step'."
+          fi
+        fi
+        [ -n "$description" ] || description="unknown step"
+        one_line_description="$(printf '%s' "$description" | tr '\r\n' '  ')"
+
+        # 2. Summary (no date, run ID or SHA; one line; Jira's 255-character limit)
+        #    and the repeat-detection label derived from it.
+        summary="IZG CI failure: ${COMPONENT} - ${GITHUB_WORKFLOW} - ${one_line_description}"
+        summary="$(printf '%s' "$summary" | tr '\r\n' '  ')"
+        summary="${summary:0:255}"
+        dedup_label="ci-failure-$(printf '%s' "$summary" | sha1sum | cut -c1-12)"
+        echo "Summary: ${summary}"
+        echo "Repeat-detection label: ${dedup_label}"
+
+        # 3. Jira site from the URL, whatever API version it ends in.
+        site="${JIRA_API_URL%/}"
+        site="$(printf '%s' "$site" | sed -E 's#/rest/api/[0-9]+$##')"
+        site="${site%/}"
+        api="${site}/rest/api/2"
+
+        # Calls Jira. Sets JIRA_STATUS (HTTP status, 000 if unreachable or timed out)
+        # and JIRA_BODY. The Authorization header is never printed. The timeouts stop a
+        # hung Jira from holding the (already failed) job until its own timeout.
+        jira() {
+          local method="$1" url="$2" data="${3:-}" out
+          out="$(mktemp)"
+          local args=(-sS --connect-timeout 10 --max-time 30 -o "$out" -w '%{http_code}' -X "$method" "$url"
+            -H "Authorization: Basic ${JIRA_AUTH}"
+            -H 'Accept: application/json')
+          if [ -n "$data" ]; then
+            args+=(-H 'Content-Type: application/json' --data-binary "$data")
+          fi
+          JIRA_STATUS="$(curl "${args[@]}")" || JIRA_STATUS="000"
+          JIRA_BODY="$(cat "$out")"
+          rm -f "$out"
+        }
+        ok() { [[ "$JIRA_STATUS" =~ ^2[0-9][0-9]$ ]]; }
+        jira_error() {
+          local msg
+          if [ "$JIRA_STATUS" = "000" ]; then
+            printf 'no response from Jira: unreachable, or timed out'
+            return
+          fi
+          msg="$(printf '%s' "$JIRA_BODY" | jq -r '[(.errorMessages // [])[], ((.errors // {}) | to_entries[] | "\(.key): \(.value)")] | join("; ")' 2>/dev/null)" || msg=""
+          [ -n "$msg" ] || msg="$(printf '%s' "$JIRA_BODY" | tr '\r\n' '  ' | cut -c1-300)"
+          printf 'HTTP %s: %s' "$JIRA_STATUS" "$msg"
+        }
+        # Escapes wiki-markup structure characters in free text.
+        wiki() { printf '%s' "$1" | sed -E 's/([][{}|])/\\\1/g'; }
+
+        # 4. Content shared by a new ticket's description and a repeat comment. No logs.
+        run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+        details="*Repository:* ${GITHUB_REPOSITORY}"$'\n'
+        details+="*Workflow:* $(wiki "$GITHUB_WORKFLOW")"$'\n'
+        details+="*Event:* ${GITHUB_EVENT_NAME}"$'\n'
+        details+="*Ref:* $(wiki "$GITHUB_REF")"$'\n'
+        details+="*Commit:* ${GITHUB_SHA}"$'\n'
+        details+="*Run:* ${run_url}"$'\n'
+        details+="*Failure:* $(wiki "$one_line_description")"$'\n'
+        if [ -n "$PR_URL_INPUT" ]; then
+          details+="*Pull request:* ${PR_URL_INPUT}"$'\n'
+        fi
+        details+="*Reported at (UTC):* $(date -u '+%Y-%m-%d %H:%M:%S')"
+
+        # 5. Is there an open ticket for this failure?
+        existing=""
+        jql="project = \"${PROJECT_KEY}\" AND labels = \"${dedup_label}\" AND statusCategory != Done ORDER BY created DESC"
+        jira POST "${api}/search/jql" "$(jq -n --arg jql "$jql" '{jql: $jql, fields: ["key"], maxResults: 1}')"
+        if ok; then
+          existing="$(printf '%s' "$JIRA_BODY" | jq -r '.issues[0].key // empty' 2>/dev/null)" || existing=""
+        else
+          echo "::warning title=report-ci-failure::Searching Jira for an open ticket failed ($(jira_error)). Creating a new ticket instead."
+        fi
+
+        if [ -n "$existing" ]; then
+          # 6a. Repeat: comment only, never change the ticket's fields.
+          comment="The same failure happened again."$'\n\n'"${details}"
+          jira POST "${api}/issue/${existing}/comment" "$(jq -n --arg body "$comment" '{body: $body}')"
+          if ! ok; then
+            echo "::error title=report-ci-failure::Adding a comment to ${existing} failed ($(jira_error))."
+            exit 1
+          fi
+          key="$existing"
+          result="commented"
+        else
+          # 6b. New ticket.
+          sprint_id=""
+          if [ "$SPRINT" = "active" ]; then
+            jira GET "${site}/rest/agile/1.0/board/${BOARD_ID}/sprint?state=active"
+            if ok; then
+              # A board can have more than one active sprint when an old one is never
+              # closed, so take the one that started most recently.
+              sprint_id="$(printf '%s' "$JIRA_BODY" | jq -r '[.values[]? | select(.state == "active")] | sort_by(.startDate // "") | last | .id // empty' 2>/dev/null)" || sprint_id=""
+              if [ -z "$sprint_id" ]; then
+                echo "::warning title=report-ci-failure::No active sprint found on board ${BOARD_ID}; creating the ticket in the backlog."
+              fi
+            else
+              echo "::warning title=report-ci-failure::Looking up the active sprint on board ${BOARD_ID} failed ($(jira_error)); creating the ticket in the backlog."
+            fi
+          fi
+          components="${COMPONENTS_INPUT:-$COMPONENT}"
+          ticket_description="A CI job failed. While this ticket is open, the same failure is added here as a comment instead of opening a new ticket."$'\n\n'"${details}"$'\n\n'"Repeat-detection label: ${dedup_label}"
+          create_body="$(jq -n \
+            --arg project "$PROJECT_KEY" --arg type "$ISSUE_TYPE" \
+            --arg summary "$summary" --arg description "$ticket_description" \
+            --arg components "$components" --arg labels "$LABELS_INPUT" --arg dedup "$dedup_label" \
+            --arg priority "$PRIORITY" --arg assignee "$ASSIGNEE" --arg epic "$EPIC_KEY" \
+            --arg sprint "$sprint_id" --arg ai_use "$AI_USE" '
+            def csv: split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0));
+            {fields: (
+              {
+                project: {key: $project},
+                issuetype: {name: $type},
+                summary: $summary,
+                description: $description,
+                labels: (($labels | csv) + [$dedup] | unique),
+                components: ($components | csv | map({name: .}))
+              }
+              + (if $priority != "" then {priority: {name: $priority}} else {} end)
+              + (if $assignee != "" then {assignee: {accountId: $assignee}} else {} end)
+              + (if $epic != "" then {parent: {key: $epic}} else {} end)
+              + (if $sprint != "" then {customfield_10020: ($sprint | tonumber)} else {} end)
+              + (if $ai_use != "" then {customfield_10619: {value: $ai_use}} else {} end)
+            )}')"
+          jira POST "${api}/issue" "$create_body"
+          if ! ok; then
+            echo "::error title=report-ci-failure::Creating the Jira ticket failed ($(jira_error))."
+            exit 1
+          fi
+          key="$(printf '%s' "$JIRA_BODY" | jq -r '.key // empty' 2>/dev/null)" || key=""
+          if [ -z "$key" ]; then
+            echo "::error title=report-ci-failure::Jira accepted the create request but returned no issue key."
+            exit 1
+          fi
+          result="created"
+        fi
+
+        # 7. Outputs.
+        issue_url="${site}/browse/${key}"
+        {
+          echo "issue-key=${key}"
+          echo "issue-url=${issue_url}"
+          echo "result=${result}"
+        } >> "$GITHUB_OUTPUT"
+        echo "### Jira: [${key}](${issue_url}) (${result})" >> "$GITHUB_STEP_SUMMARY"
+        echo "Jira ticket ${key} ${result}: ${issue_url}"

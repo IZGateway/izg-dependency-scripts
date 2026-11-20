@@ -220,6 +220,132 @@ Adding this permission to all service OIDC roles is tracked in
 
 ---
 
+### `report-ci-failure` — File a Jira ticket when a CI job fails
+
+**Path:** `.github/actions/report-ci-failure/action.yml`
+
+Composite action that reports a failed job as a Jira ticket through the Jira REST API
+(version 2). Add it as the **last step** of the job you want reported. It reports every time it
+runs, so the step's `if:` decides when to report.
+
+#### How repeats work
+
+The ticket summary is:
+
+```
+IZG CI failure: <component> - <workflow> - <failure description>
+```
+
+The failure description is the `reason` input if given. Otherwise it is the name of the
+**last** failed step in the calling job, so an earlier `continue-on-error` step that failed is
+not picked. If the lookup fails, it is `unknown step`. The summary has no date, run ID or SHA,
+and is cut to one line of 255 characters.
+
+The action adds a hidden label `ci-failure-<first 12 hex of sha1(summary)>` to the ticket,
+then on every report searches the project for an **open** ticket (status category not Done)
+with that label:
+
+- **Found:** it adds a comment to that ticket and changes nothing else.
+- **Not found:** it creates a new ticket. So a failure after the ticket is Done opens a new one.
+
+A different failed step gives a different summary, and so its own ticket. **Step names
+matter:** renaming a step changes the key.
+
+The description and comments contain run metadata and a link to the run only: repository,
+workflow, event, ref, commit, run URL, failure, PR URL (if given) and UTC time. They never
+include logs, because the calling repositories are public.
+
+#### Inputs
+
+| Input | Required | Default | Description |
+|---|---|---|---|
+| `component` | ✅ | — | Used in the summary, and the default Jira component, e.g. `BOM`, `Configuration Console`, `Transformation Console` |
+| `jira-api-url` | ✅ | — | Pass `secrets.JIRA_API_URL`. Any trailing `/rest/api/<n>` is removed; version 2 is always used. |
+| `jira-auth` | ✅ | — | Pass `secrets.JIRA_API_AUTH_BASE64` (Base64 of `user-email:api-token`) |
+| `reason` | ❌ | `''` | Failure description to use instead of the detected step (for warning-only failures) |
+| `pr-url` | ❌ | `''` | PR the run was trying to merge |
+| `github-token` | ❌ | `github.token` | Used only for the failed-step lookup |
+| `project-key` | ❌ | `IGDD` | Jira project |
+| `issue-type` | ❌ | `Bug` | Issue type for new tickets |
+| `components` | ❌ | the `component` input | Comma-separated component names for new tickets |
+| `labels` | ❌ | `ci-failure` | Comma-separated labels for new tickets; the repeat-detection label is always added |
+| `priority` | ❌ | `''` | Priority name; empty uses Jira's default |
+| `assignee-account-id` | ❌ | `''` | Atlassian account ID; empty uses Jira's default |
+| `epic-key` | ❌ | `''` | Parent epic, e.g. `IGDD-1234` |
+| `sprint` | ❌ | `active` | `active` = the active sprint on `board-id` (backlog if there is none); `none` = backlog |
+| `board-id` | ❌ | `27` | Board for the active-sprint lookup (27 is "IGDD Scrum") |
+| `ai-use` | ❌ | `NA` | IGDD "AI Use" dropdown. A Bug can't be closed until it is set; empty leaves it unset |
+
+Fields only apply when a ticket is **created**. A repeat comment never changes them, so
+anything someone has edited on the ticket is kept.
+
+#### Outputs
+
+| Output | Description |
+|---|---|
+| `issue-key` | Ticket created or commented on, e.g. `IGDD-1234` |
+| `issue-url` | Its browse URL |
+| `result` | `created` or `commented` |
+
+The run's step summary also links to the ticket.
+
+#### Errors
+
+- A failed create or comment fails the step, showing the HTTP status and Jira's error
+  message (for example an unknown component). The credential is never printed.
+- A failed search logs a warning and creates a ticket anyway, so a report is never lost.
+- A failed active-sprint lookup logs a warning and creates the ticket in the backlog.
+- Each Jira call gives up after 10 seconds to connect or 30 seconds in total, and the
+  failed-step lookup after 60 seconds (it then reports `unknown step`), so an unresponsive
+  Jira or GitHub API can't hold the failed job for hours.
+
+#### Caller requirements
+
+- Grant `actions: read` in the workflow's `permissions:` so the failed step can be looked up.
+  Without it, the report is still made, as `unknown step`.
+- Make it the last step of the job.
+- Gate it with `if: failure() && github.event_name == 'schedule'`, so manual runs don't file
+  tickets.
+- The org secrets `JIRA_API_URL` and `JIRA_API_AUTH_BASE64` must be shared with the calling
+  repository. Credentials are passed as inputs because composite actions cannot read
+  `secrets.*` (same as `cve-scan`). **Never hardcode a credential** in a workflow.
+  A repo-level secret with the same name overrides the org secret: `izg-configuration-console`
+  has its own `JIRA_API_URL` / `JIRA_API_AUTH_BASE64`, so it reports with those.
+
+#### Usage
+
+```yaml
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  update:
+    steps:
+      # ... the job's own steps ...
+
+      - name: Report failure to Jira
+        if: failure() && github.event_name == 'schedule'
+        uses: IZGateway/izg-dependency-scripts/.github/actions/report-ci-failure@v1
+        with:
+          component: Configuration Console
+          jira-api-url: ${{ secrets.JIRA_API_URL }}
+          jira-auth: ${{ secrets.JIRA_API_AUTH_BASE64 }}
+          pr-url: ${{ env.PR_URL }}
+          # optional, for example:
+          # components: Configuration Console, Build / Deploy
+          # sprint: none    # backlog instead of the active sprint
+```
+
+#### Self-test
+
+`.github/workflows/test-report-ci-failure.yml` (manual run only) fails a step on purpose and
+reports it, so it is red by design and creates a real IGDD test ticket that the person running
+it closes. Run it twice with the same input, at least a minute apart (Jira's search index can
+lag a new ticket), to check that the second run becomes a comment on the first ticket.
+
+---
+
 ## 🔧 Commands
 
 ### `fix-vulnerabilities`
