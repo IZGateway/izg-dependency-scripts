@@ -160,8 +160,9 @@ The BOM also reports its warning-only "PR left open for review" path. Its condit
 | `epic-key` | empty | `parent.key`, only when set |
 | `sprint` | `active` | `customfield_10020` (Sprint) set to the active sprint's numeric ID when `active` |
 | `board-id` | `27` | board for the active-sprint lookup |
+| `ai-use` | `NA` | `customfield_10619` ("AI Use", single select) as `{value: ...}`, only when set |
 
-**Why these defaults:** Bug is what IGDD-2768 asks for. The repo's own component is what the team uses today. The active sprint is the default (user decision, 2026-11-20) so a nightly failure is visible on the sprint board straight away instead of waiting in the backlog; a caller can pass `sprint: none` to opt out.
+**Why these defaults:** Bug is what IGDD-2768 asks for. The repo's own component is what the team uses today. The active sprint is the default (user decision, 2026-11-20) so a nightly failure is visible on the sprint board straight away instead of waiting in the backlog; a caller can pass `sprint: none` to opt out. "AI Use" defaults to `NA` because IGDD's Bug workflow hides its Done transitions until that field is set: the 2026-11-20 self-test ticket IGDD-3856 could not be closed until it was set by hand.
 
 **Why repeats never change fields:** a comment is the whole repeat behavior. Someone may have reassigned, re-prioritised or re-scheduled the ticket, and the action should not undo that.
 

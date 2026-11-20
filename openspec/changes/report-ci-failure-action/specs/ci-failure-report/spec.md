@@ -109,12 +109,13 @@ When creating a ticket, the action SHALL set these fields from inputs:
 | `epic-key` | empty, so none | parent |
 | `sprint` | `active` | `active` adds the ticket to the active sprint of `board-id`; `none` leaves it in the backlog |
 | `board-id` | `27` | board used for the active-sprint lookup |
+| `ai-use` | `NA` | the "AI Use" dropdown, which IGDD requires before a Bug can be closed |
 
 An empty optional input SHALL leave that field out of the request. `sprint` SHALL accept only `none` or `active`; any other value SHALL fail the action before any Jira call.
 
 #### Scenario: Defaults
 - **WHEN** a caller passes only the required inputs with `component: Configuration Console`
-- **THEN** the created ticket SHALL be a `Bug` in `IGDD`, with component `Configuration Console`, labels `ci-failure` and the repeat-detection label, in the active sprint of board 27
+- **THEN** the created ticket SHALL be a `Bug` in `IGDD`, with component `Configuration Console`, labels `ci-failure` and the repeat-detection label, "AI Use" `NA`, in the active sprint of board 27
 
 #### Scenario: Multiple components
 - **WHEN** a caller passes `components: "Configuration Console, Build / Deploy"`

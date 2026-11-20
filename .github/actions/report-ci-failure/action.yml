@@ -93,6 +93,13 @@ inputs:
     description: Jira board used for the active-sprint lookup (27 is "IGDD Scrum")
     required: false
     default: '27'
+  ai-use:
+    description: >
+      Value of the IGDD "AI Use" dropdown (customfield_10619) on new tickets. Defaults to
+      "NA", because a Bug cannot be moved to a Done status until it is set. Empty leaves
+      the field unset.
+    required: false
+    default: NA
 
 outputs:
   issue-key:
@@ -164,6 +171,7 @@ runs:
         EPIC_KEY: ${{ inputs.epic-key }}
         SPRINT: ${{ inputs.sprint }}
         BOARD_ID: ${{ inputs.board-id }}
+        AI_USE: ${{ inputs.ai-use }}
       run: |
         set -uo pipefail
 
@@ -279,7 +287,7 @@ runs:
             --arg summary "$summary" --arg description "$ticket_description" \
             --arg components "$components" --arg labels "$LABELS_INPUT" --arg dedup "$dedup_label" \
             --arg priority "$PRIORITY" --arg assignee "$ASSIGNEE" --arg epic "$EPIC_KEY" \
-            --arg sprint "$sprint_id" '
+            --arg sprint "$sprint_id" --arg ai_use "$AI_USE" '
             def csv: split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0));
             {fields: (
               {
@@ -294,6 +302,7 @@ runs:
               + (if $assignee != "" then {assignee: {accountId: $assignee}} else {} end)
               + (if $epic != "" then {parent: {key: $epic}} else {} end)
               + (if $sprint != "" then {customfield_10020: ($sprint | tonumber)} else {} end)
+              + (if $ai_use != "" then {customfield_10619: {value: $ai_use}} else {} end)
             )}')"
           jira POST "${api}/issue" "$create_body"
           if ! ok; then

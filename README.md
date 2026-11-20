@@ -274,6 +274,7 @@ include logs, because the calling repositories are public.
 | `epic-key` | ❌ | `''` | Parent epic, e.g. `IGDD-1234` |
 | `sprint` | ❌ | `active` | `active` = the active sprint on `board-id` (backlog if there is none); `none` = backlog |
 | `board-id` | ❌ | `27` | Board for the active-sprint lookup (27 is "IGDD Scrum") |
+| `ai-use` | ❌ | `NA` | IGDD "AI Use" dropdown. A Bug can't be closed until it is set; empty leaves it unset |
 
 Fields only apply when a ticket is **created**. A repeat comment never changes them, so
 anything someone has edited on the ticket is kept.
