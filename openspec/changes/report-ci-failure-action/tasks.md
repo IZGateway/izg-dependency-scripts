@@ -57,7 +57,7 @@
 ## 6. Release
 
 - [x] 6.1 Remove the temporary push trigger from the self-test (a plain revert would conflict, because the file changed after that commit)
-- [ ] 6.2 Open a PR to `main` labelled `bump:minor`, and make sure `validate.yml` passes
+- [x] 6.2 Open a PR to `main` labelled `bump:minor`, and make sure `validate.yml` passes (PR #12)
 - [ ] 6.3 Merge, then confirm `ci.yml` released `v1.1.0` and moved the `v1` tag
 
 ## 7. Wire callers (separate PRs, branch `IGDD-2768` off `develop`)
