@@ -272,7 +272,7 @@ include logs, because the calling repositories are public.
 | `priority` | ❌ | `''` | Priority name; empty uses Jira's default |
 | `assignee-account-id` | ❌ | `''` | Atlassian account ID; empty uses Jira's default |
 | `epic-key` | ❌ | `''` | Parent epic, e.g. `IGDD-1234` |
-| `sprint` | ❌ | `none` | `none` = backlog; `active` = the active sprint on `board-id` (backlog if there is none) |
+| `sprint` | ❌ | `active` | `active` = the active sprint on `board-id` (backlog if there is none); `none` = backlog |
 | `board-id` | ❌ | `27` | Board for the active-sprint lookup (27 is "IGDD Scrum") |
 
 Fields only apply when a ticket is **created**. A repeat comment never changes them, so
@@ -330,7 +330,7 @@ jobs:
           pr-url: ${{ env.PR_URL }}
           # optional, for example:
           # components: Configuration Console, Build / Deploy
-          # sprint: active
+          # sprint: none    # backlog instead of the active sprint
 ```
 
 #### Self-test

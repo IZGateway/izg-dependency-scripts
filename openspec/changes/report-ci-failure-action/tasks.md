@@ -51,6 +51,7 @@
   - the step outputs are `result=created` and the new key
 - [x] 5.2 Wait at least a minute, re-run the same run, and confirm the existing ticket gets a comment, no second ticket is created, and `result=commented` (2026-11-20: run 44813122176 created IGDD-3856; attempt 2 commented on it)
 - [ ] 5.3 Close the test tickets (IGDD-3850, IGDD-3851 from the email route, and the new one) and record the result on IGDD-2768
+- [ ] 5.4 After making `sprint: active` the default and closing IGDD-3856, push again and confirm the new ticket is in the active sprint of board 27 (IGDD Scrum); then close it
 
 ## 6. Release
 

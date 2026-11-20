@@ -84,10 +84,11 @@ inputs:
     default: ''
   sprint:
     description: >
-      "none" leaves new tickets in the backlog. "active" adds them to the active sprint
-      of board-id; if there is none, the ticket is created without a sprint.
+      "active" (default) adds new tickets to the active sprint of board-id; if there is
+      none, the ticket is created in the backlog with a warning. "none" always uses the
+      backlog.
     required: false
-    default: none
+    default: active
   board-id:
     description: Jira board used for the active-sprint lookup (27 is "IGDD Scrum")
     required: false

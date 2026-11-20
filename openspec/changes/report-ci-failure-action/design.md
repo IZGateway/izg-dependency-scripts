@@ -158,10 +158,10 @@ The BOM also reports its warning-only "PR left open for review" path. Its condit
 | `priority` | empty | `priority.name`, only when set |
 | `assignee-account-id` | empty | `assignee.accountId`, only when set |
 | `epic-key` | empty | `parent.key`, only when set |
-| `sprint` | `none` | `customfield_10020` (Sprint) set to the active sprint's numeric ID when `active` |
+| `sprint` | `active` | `customfield_10020` (Sprint) set to the active sprint's numeric ID when `active` |
 | `board-id` | `27` | board for the active-sprint lookup |
 
-**Why these defaults:** Bug is what IGDD-2768 asks for. The repo's own component is what the team uses today. Backlog by default avoids changing a sprint's scope without someone choosing to.
+**Why these defaults:** Bug is what IGDD-2768 asks for. The repo's own component is what the team uses today. The active sprint is the default (user decision, 2026-11-20) so a nightly failure is visible on the sprint board straight away instead of waiting in the backlog; a caller can pass `sprint: none` to opt out.
 
 **Why repeats never change fields:** a comment is the whole repeat behavior. Someone may have reassigned, re-prioritised or re-scheduled the ticket, and the action should not undo that.
 

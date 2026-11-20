@@ -30,7 +30,7 @@ So the logic belongs in one shared action rather than copied into each repo.
   - searches the Jira project for an open ticket with that label
   - adds a comment to it if one exists, and otherwise creates a new ticket
   - writes a minimal description or comment with no log content
-- **Configurable ticket fields**, each with a default: issue type (`Bug`), components (the `component` input), labels (`ci-failure`), and optionally priority, assignee, epic, and the active sprint on a board.
+- **Configurable ticket fields**, each with a default: issue type (`Bug`), components (the `component` input), labels (`ci-failure`), sprint (the active sprint on board 27, or `none` for the backlog), and optionally priority, assignee and epic.
 - **Credentials are passed in as inputs.** Composite actions cannot read `secrets.*`; `cve-scan` has the same constraint. The caller passes the Jira REST URL and a Base64 `user:token` value from org secrets.
 - **No email.** The SMTP inputs and `dawidd6/action-send-mail` are removed.
 - **New self-test workflow** `.github/workflows/test-report-ci-failure.yml`, run by `workflow_dispatch`. It forces a step to fail and calls the action, proving ticket creation and the repeat-comment behavior end to end.

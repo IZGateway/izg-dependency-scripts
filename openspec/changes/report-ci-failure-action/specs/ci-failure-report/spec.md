@@ -107,21 +107,21 @@ When creating a ticket, the action SHALL set these fields from inputs:
 | `priority` | empty, so Jira's default | priority, by name |
 | `assignee-account-id` | empty, so Jira's default | assignee |
 | `epic-key` | empty, so none | parent |
-| `sprint` | `none` | `none` leaves the ticket in the backlog; `active` adds it to the active sprint of `board-id` |
+| `sprint` | `active` | `active` adds the ticket to the active sprint of `board-id`; `none` leaves it in the backlog |
 | `board-id` | `27` | board used for the active-sprint lookup |
 
 An empty optional input SHALL leave that field out of the request. `sprint` SHALL accept only `none` or `active`; any other value SHALL fail the action before any Jira call.
 
 #### Scenario: Defaults
 - **WHEN** a caller passes only the required inputs with `component: Configuration Console`
-- **THEN** the created ticket SHALL be a `Bug` in `IGDD`, with component `Configuration Console`, labels `ci-failure` and the repeat-detection label, and no sprint
+- **THEN** the created ticket SHALL be a `Bug` in `IGDD`, with component `Configuration Console`, labels `ci-failure` and the repeat-detection label, in the active sprint of board 27
 
 #### Scenario: Multiple components
 - **WHEN** a caller passes `components: "Configuration Console, Build / Deploy"`
 - **THEN** the created ticket SHALL have both components
 
 #### Scenario: Active sprint unavailable
-- **WHEN** `sprint: active` is passed and the board has no active sprint, or the lookup fails
+- **WHEN** `sprint` is `active` (the default) and the board has no active sprint, or the lookup fails
 - **THEN** the action SHALL create the ticket without a sprint and emit a warning
 
 ### Requirement: Minimal content without logs
