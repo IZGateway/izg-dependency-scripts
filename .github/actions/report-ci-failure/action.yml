@@ -181,12 +181,14 @@ runs:
         #    name so another job's failure is never reported as this one's.
         description="$REASON"
         if [ -z "$description" ]; then
-          # $ENV.RUNNER_NAME is read by jq, not by the shell.
+          # $ENV.RUNNER_NAME is read by jq, not by the shell. Each name is printed as a
+          # JSON string (one line, even if the name has line breaks) and decoded after
+          # the last one is picked. timeout: a hung API call falls back to "unknown step".
           # shellcheck disable=SC2016
-          description="$(gh api --paginate \
+          description="$(timeout 60 gh api --paginate \
             "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/attempts/${GITHUB_RUN_ATTEMPT}/jobs?per_page=100" \
-            --jq '.jobs[] | select(.runner_name == $ENV.RUNNER_NAME) | [.steps[]? | select(.conclusion == "failure") | .name] | last // empty' \
-            2>/dev/null | tail -n 1)" || description=""
+            --jq '.jobs[] | select(.runner_name == $ENV.RUNNER_NAME) | [.steps[]? | select(.conclusion == "failure") | .name] | last // empty | @json' \
+            2>/dev/null | tail -n 1 | jq -r '.' 2>/dev/null)" || description=""
           if [ -z "$description" ]; then
             echo "::warning title=report-ci-failure::Could not determine the failed step (does the workflow grant actions: read?). Reporting it as 'unknown step'."
           fi
@@ -209,12 +211,13 @@ runs:
         site="${site%/}"
         api="${site}/rest/api/2"
 
-        # Calls Jira. Sets JIRA_STATUS (HTTP status, 000 if unreachable) and JIRA_BODY.
-        # The Authorization header is never printed.
+        # Calls Jira. Sets JIRA_STATUS (HTTP status, 000 if unreachable or timed out)
+        # and JIRA_BODY. The Authorization header is never printed. The timeouts stop a
+        # hung Jira from holding the (already failed) job until its own timeout.
         jira() {
           local method="$1" url="$2" data="${3:-}" out
           out="$(mktemp)"
-          local args=(-sS -o "$out" -w '%{http_code}' -X "$method" "$url"
+          local args=(-sS --connect-timeout 10 --max-time 30 -o "$out" -w '%{http_code}' -X "$method" "$url"
             -H "Authorization: Basic ${JIRA_AUTH}"
             -H 'Accept: application/json')
           if [ -n "$data" ]; then
@@ -227,6 +230,10 @@ runs:
         ok() { [[ "$JIRA_STATUS" =~ ^2[0-9][0-9]$ ]]; }
         jira_error() {
           local msg
+          if [ "$JIRA_STATUS" = "000" ]; then
+            printf 'no response from Jira: unreachable, or timed out'
+            return
+          fi
           msg="$(printf '%s' "$JIRA_BODY" | jq -r '[(.errorMessages // [])[], ((.errors // {}) | to_entries[] | "\(.key): \(.value)")] | join("; ")' 2>/dev/null)" || msg=""
           [ -n "$msg" ] || msg="$(printf '%s' "$JIRA_BODY" | tr '\r\n' '  ' | cut -c1-300)"
           printf 'HTTP %s: %s' "$JIRA_STATUS" "$msg"
@@ -277,9 +284,11 @@ runs:
               # A board can have more than one active sprint when an old one is never
               # closed, so take the one that started most recently.
               sprint_id="$(printf '%s' "$JIRA_BODY" | jq -r '[.values[]? | select(.state == "active")] | sort_by(.startDate // "") | last | .id // empty' 2>/dev/null)" || sprint_id=""
-            fi
-            if [ -z "$sprint_id" ]; then
-              echo "::warning title=report-ci-failure::No active sprint found on board ${BOARD_ID}; creating the ticket in the backlog."
+              if [ -z "$sprint_id" ]; then
+                echo "::warning title=report-ci-failure::No active sprint found on board ${BOARD_ID}; creating the ticket in the backlog."
+              fi
+            else
+              echo "::warning title=report-ci-failure::Looking up the active sprint on board ${BOARD_ID} failed ($(jira_error)); creating the ticket in the backlog."
             fi
           fi
           components="${COMPONENTS_INPUT:-$COMPONENT}"

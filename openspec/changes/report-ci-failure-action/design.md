@@ -92,7 +92,9 @@ Callers can pass `reason` for soft failures, such as the BOM's "PR left open". O
 
 **Why match on runner name:** in a workflow with several jobs, another job's failure must not be reported as this job's.
 
-**Fallback:** any API or `jq` error falls through to `unknown step`. The lookup must never prevent a report. The 2026-11-19 self-test confirmed detection works on a real runner.
+**Fallback:** any API or `jq` error, or the lookup taking more than 60 seconds, falls through to `unknown step`. The lookup must never prevent a report. The 2026-11-19 self-test confirmed detection works on a real runner.
+
+**Step names with line breaks:** each name is passed through as a JSON string and decoded only after the last one is picked, so a name with a line break keeps every line (they are then joined with spaces). Taking the last line of raw output would have cut `Build⏎application` and `Test⏎application` both down to `application`, merging two failures into one ticket (PR #12 review).
 
 ### D5. The credential is an input, from org secrets
 
@@ -120,6 +122,8 @@ Request bodies are built with `jq -n --arg`, never by string interpolation. Auth
 - A create or comment that does not return 2xx fails the step, showing the status and Jira's `errorMessages` and `errors`.
 - A failed search emits a warning and falls through to create, so a report is never lost.
 - A failed sprint lookup emits a warning and creates the ticket without a sprint.
+
+Every Jira call uses `curl --connect-timeout 10 --max-time 30`, and the failed-step lookup runs under `timeout 60`. A call that times out is treated like an unreachable Jira (status `000`), so the fallbacks above still apply, and an unresponsive service cannot hold the already-failed job until its own timeout (6 hours by default). Added after the PR #12 review.
 
 Outputs `issue-key`, `issue-url` (`<site>/browse/<key>`) and `result` (`created` or `commented`) are written to `$GITHUB_OUTPUT`, and the run's step summary gets a link to the ticket.
 

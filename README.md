@@ -295,6 +295,9 @@ The run's step summary also links to the ticket.
   message (for example an unknown component). The credential is never printed.
 - A failed search logs a warning and creates a ticket anyway, so a report is never lost.
 - A failed active-sprint lookup logs a warning and creates the ticket in the backlog.
+- Each Jira call gives up after 10 seconds to connect or 30 seconds in total, and the
+  failed-step lookup after 60 seconds (it then reports `unknown step`), so an unresponsive
+  Jira or GitHub API can't hold the failed job for hours.
 
 #### Caller requirements
 
