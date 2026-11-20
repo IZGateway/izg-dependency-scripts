@@ -220,60 +220,93 @@ Adding this permission to all service OIDC roles is tracked in
 
 ---
 
-### `report-ci-failure` — File a ticket when a CI job fails
+### `report-ci-failure` — File a Jira ticket when a CI job fails
 
 **Path:** `.github/actions/report-ci-failure/action.yml`
 
-Composite action that reports a failed job by email to the alert address. Opsgenie turns the
-email into an IGDD Jira ticket. Add it as the **last step** of the job you want reported.
-It sends a report every time it runs, so the step's `if:` decides when to report.
+Composite action that reports a failed job as a Jira ticket through the Jira REST API
+(version 2). Add it as the **last step** of the job you want reported. It reports every time it
+runs, so the step's `if:` decides when to report.
 
-The email subject is the repeat-detection key:
+#### How repeats work
+
+The ticket summary is:
 
 ```
 IZG CI failure: <component> - <workflow> - <failure description>
 ```
 
 The failure description is the `reason` input if given. Otherwise it is the name of the
-**last** failed step in the calling job, so an earlier `continue-on-error` step that failed
-is not picked. If the lookup fails, it is `unknown step`. The subject has no date, run ID or
-SHA, so the same failure always produces the same subject, and Opsgenie can add a repeat as
-a comment on the open ticket. A different failed step opens a new ticket. **Step names
-matter:** renaming a step changes the key. The subject is cut to one line of 130 characters
-(the Opsgenie alert message limit).
+**last** failed step in the calling job, so an earlier `continue-on-error` step that failed is
+not picked. If the lookup fails, it is `unknown step`. The summary has no date, run ID or SHA,
+and is cut to one line of 255 characters.
 
-The body contains run metadata and a link to the run only: repository, workflow, event, ref,
-commit, run URL, failure, PR URL (if given), UTC time, and the dedup key. It never includes
-logs, because the calling repositories are public.
+The action adds a hidden label `ci-failure-<first 12 hex of sha1(summary)>` to the ticket,
+then on every report searches the project for an **open** ticket (status category not Done)
+with that label:
+
+- **Found:** it adds a comment to that ticket and changes nothing else.
+- **Not found:** it creates a new ticket. So a failure after the ticket is Done opens a new one.
+
+A different failed step gives a different summary, and so its own ticket. **Step names
+matter:** renaming a step changes the key.
+
+The description and comments contain run metadata and a link to the run only: repository,
+workflow, event, ref, commit, run URL, failure, PR URL (if given) and UTC time. They never
+include logs, because the calling repositories are public.
 
 #### Inputs
 
 | Input | Required | Default | Description |
 |---|---|---|---|
-| `component` | ✅ | — | Jira component name, e.g. `BOM`, `Configuration Console`, `Transformation Console` |
-| `smtp-username` | ✅ | — | Pass `secrets.MAIL_USERNAME` |
-| `smtp-password` | ✅ | — | Pass `secrets.MAIL_PASSWORD` |
-| `to` | ✅ | — | Pass `secrets.JIRA_ALERT_EMAIL`. Empty fails the step. |
+| `component` | ✅ | — | Used in the summary, and the default Jira component, e.g. `BOM`, `Configuration Console`, `Transformation Console` |
+| `jira-api-url` | ✅ | — | Pass `secrets.JIRA_API_URL`. Any trailing `/rest/api/<n>` is removed; version 2 is always used. |
+| `jira-auth` | ✅ | — | Pass `secrets.JIRA_API_AUTH_BASE64` (Base64 of `user-email:api-token`) |
 | `reason` | ❌ | `''` | Failure description to use instead of the detected step (for warning-only failures) |
 | `pr-url` | ❌ | `''` | PR the run was trying to merge |
 | `github-token` | ❌ | `github.token` | Used only for the failed-step lookup |
-| `server-address` | ❌ | `email-smtp.us-east-1.amazonaws.com` | SMTP server (SES) |
-| `server-port` | ❌ | `465` | SMTP port (implicit TLS) |
-| `from` | ❌ | `GithubActionNotification <GithubActionNotification@izgateway.org>` | Sender |
+| `project-key` | ❌ | `IGDD` | Jira project |
+| `issue-type` | ❌ | `Bug` | Issue type for new tickets |
+| `components` | ❌ | the `component` input | Comma-separated component names for new tickets |
+| `labels` | ❌ | `ci-failure` | Comma-separated labels for new tickets; the repeat-detection label is always added |
+| `priority` | ❌ | `''` | Priority name; empty uses Jira's default |
+| `assignee-account-id` | ❌ | `''` | Atlassian account ID; empty uses Jira's default |
+| `epic-key` | ❌ | `''` | Parent epic, e.g. `IGDD-1234` |
+| `sprint` | ❌ | `none` | `none` = backlog; `active` = the active sprint on `board-id` (backlog if there is none) |
+| `board-id` | ❌ | `27` | Board for the active-sprint lookup (27 is "IGDD Scrum") |
 
-Secrets are passed as inputs because composite actions cannot read `secrets.*` (same as
-`cve-scan`). **Never hardcode the alert address** in a workflow: these repositories are public,
-and a visible inbound address would let anyone create tickets.
+Fields only apply when a ticket is **created**. A repeat comment never changes them, so
+anything someone has edited on the ticket is kept.
+
+#### Outputs
+
+| Output | Description |
+|---|---|
+| `issue-key` | Ticket created or commented on, e.g. `IGDD-1234` |
+| `issue-url` | Its browse URL |
+| `result` | `created` or `commented` |
+
+The run's step summary also links to the ticket.
+
+#### Errors
+
+- A failed create or comment fails the step, showing the HTTP status and Jira's error
+  message (for example an unknown component). The credential is never printed.
+- A failed search logs a warning and creates a ticket anyway, so a report is never lost.
+- A failed active-sprint lookup logs a warning and creates the ticket in the backlog.
 
 #### Caller requirements
 
 - Grant `actions: read` in the workflow's `permissions:` so the failed step can be looked up.
-  Without it, the report still goes out, as `unknown step`.
+  Without it, the report is still made, as `unknown step`.
 - Make it the last step of the job.
 - Gate it with `if: failure() && github.event_name == 'schedule'`, so manual runs don't file
   tickets.
-- The org secrets `MAIL_USERNAME`, `MAIL_PASSWORD` and `JIRA_ALERT_EMAIL` must be shared
-  with the calling repository.
+- The org secrets `JIRA_API_URL` and `JIRA_API_AUTH_BASE64` must be shared with the calling
+  repository. Credentials are passed as inputs because composite actions cannot read
+  `secrets.*` (same as `cve-scan`). **Never hardcode a credential** in a workflow.
+  A repo-level secret with the same name overrides the org secret: `izg-configuration-console`
+  has its own `JIRA_API_URL` / `JIRA_API_AUTH_BASE64`, so it reports with those.
 
 #### Usage
 
@@ -287,23 +320,25 @@ jobs:
     steps:
       # ... the job's own steps ...
 
-      - name: Report failure to Opsgenie (Jira)
+      - name: Report failure to Jira
         if: failure() && github.event_name == 'schedule'
         uses: IZGateway/izg-dependency-scripts/.github/actions/report-ci-failure@v1
         with:
           component: Configuration Console
-          smtp-username: ${{ secrets.MAIL_USERNAME }}
-          smtp-password: ${{ secrets.MAIL_PASSWORD }}
-          to: ${{ secrets.JIRA_ALERT_EMAIL }}
+          jira-api-url: ${{ secrets.JIRA_API_URL }}
+          jira-auth: ${{ secrets.JIRA_API_AUTH_BASE64 }}
           pr-url: ${{ env.PR_URL }}
+          # optional, for example:
+          # components: Configuration Console, Build / Deploy
+          # sprint: active
 ```
 
 #### Self-test
 
 `.github/workflows/test-report-ci-failure.yml` (manual run only) fails a step on purpose and
-reports it, so it is red by design and files a real test ticket that the person running it
-closes. Run it twice with the same input to check that the second run becomes a comment on
-the first ticket.
+reports it, so it is red by design and creates a real IGDD test ticket that the person running
+it closes. Run it twice with the same input, at least a minute apart (Jira's search index can
+lag a new ticket), to check that the second run becomes a comment on the first ticket.
 
 ---
 

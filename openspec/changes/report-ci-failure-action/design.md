@@ -9,7 +9,17 @@ Today, three nightly dependency workflows open a PR and auto-merge it once its c
 
 The bot has merged the last several PRs in each repo with no human involved. When a run fails, the only signal is a red run in the Actions tab.
 
-The only existing precedent for failure reporting is `izgw-performance-test`, which is private. On failure it sends an email with `dawidd6/action-send-mail@v17` through the SES relay `email-smtp.us-east-1.amazonaws.com:465`, and copies `devops@izgateway.opsgenie.net`. Opsgenie then creates the Jira ticket. The SMTP credentials are org secrets `MAIL_USERNAME` and `MAIL_PASSWORD`; the perf repo has no repo-level copies.
+The first version of this design emailed the Opsgenie integration address, copying `izgw-performance-test`. The self-test on 2026-11-19 proved the email reached Jira, but a repeat created a second ticket (IGDD-3850, IGDD-3851) instead of a comment, the tickets were Tasks, and the body was mangled. The team then chose to call Jira directly (2026-11-20).
+
+Existing Jira API usage in the org:
+- The CC app creates change-request tickets with `JIRA_API_URL` (`https://izgateway.atlassian.net/rest/api/2`, per `iz-gateway-terraform`) and `JIRA_API_AUTH_BASE64`. The same values are CC repo-level GitHub secrets for its Playwright E2E.
+- The CveRouter Lambda (`izgw-aws-lambda`) creates Vulnerability tickets in IGDD with components, as a non-person "API User", with credentials in AWS Secrets Manager (`izgw-cve-router/jira_credentials`).
+- IGDD-2767 (open) plans to move CC's Jira credential out of GitHub secrets into AWS Secrets Manager.
+
+IGDD facts, checked 2026-11-19:
+- Components `BOM`, `Configuration Console` and `Transformation Console` exist with those exact names. `Build / Deploy` also exists, for CI/CD.
+- The Bug issue type exists. Creating a Bug requires only project, issue type and summary. Reporter is not settable.
+- Board 27, "IGDD Scrum", is the project's only scrum board.
 
 Constraints:
 - **Public callers.** The three calling repos are public, and so is this one, so anything in a workflow file is world-readable.
@@ -21,19 +31,21 @@ People involved:
 - Keith, who asked for this ticket
 - the team, who receive the tickets
 - an org admin, who owns the secrets
-- whoever owns the Opsgenie email integration
+- whoever owns the Jira account behind the credential
 
 ## Goals / Non-Goals
 
 **Goals:**
 - One implementation that any IZ Gateway workflow can call in about 8 lines.
-- The same failure, in the same component, always produces the same subject, so Opsgenie can treat a repeat as the same alert. A different failure produces a different subject.
-- Nothing in the action or its callers reveals the Opsgenie address or log content.
-- The whole path (action, email, Opsgenie, Jira) is proven by a self-test before any product repo depends on it.
+- The same failure, in the same component, adds a comment to its open ticket. A different failure opens its own ticket.
+- Tickets have the right type, components and labels, chosen by the caller with sensible defaults.
+- Nothing in the action or its callers reveals a credential or log content.
+- The whole path is proven by a self-test before any product repo depends on it.
 
 **Non-Goals:**
-- Calling the Jira API directly, or setting Jira fields such as sprint, status or component. Opsgenie owns ticket creation.
 - Deciding when a failure is worth reporting. That is the caller's `if:`.
+- Moving tickets between statuses, adding watchers, or changing a ticket's fields on a repeat.
+- Reading the credential from AWS Secrets Manager (IGDD-2767's direction). Possible later.
 - E2E failure reporting (IGDD-2762) and the Java nightly workflows (IGDD-2763 to IGDD-2766). They will reuse the action later.
 
 ## Decisions
@@ -46,23 +58,31 @@ The action runs as a step inside the failing job.
 
 **Alternatives:**
 - **Reusable workflow** (`workflow_call` with `needs:` and `if: failure()`). For: `secrets: inherit`. Against: the failed job's environment has to be passed out through job outputs, which means extra wiring in every caller.
-- **Copying the send-mail step into each workflow.** This is what the perf test does. It is simplest, but there will be about nine copies eventually, and any drift between them breaks repeat detection.
+- **Copying the steps into each workflow.** Simplest, but there will be about nine copies eventually, and any drift between them breaks repeat detection.
 
-### D2. Email Opsgenie, do not call Jira
+### D2. Call the Jira REST API (version 2) directly
 
-The action reuses the path the perf test already uses.
+**Why:** the action controls repeat detection, the issue type, components, labels and formatting itself, instead of depending on Opsgenie configuration nobody on the team owns. Version 2 accepts a wiki-markup string as the description, which is simple to build in shell and renders cleanly. CC's existing Jira URL is already version 2.
 
-**Why:** no Jira API token in GitHub, no new integration to build, and the team already receives tickets from it.
+**Alternatives:**
+- **Email Opsgenie.** Built and tested first. It delivered, but repeats opened new tickets, tickets were Tasks, the body was mangled, and Opsgenie is being retired.
+- **Version 3.** Requires the description and comments in Atlassian Document Format (nested JSON). More code for no gain here.
 
-**Alternative:** call the Jira REST API directly. That needs a service-account token stored as an org secret, plus a lookup of the current sprint on board 27. The team ruled it out.
+### D3. Summary is the key; a hashed label is the match
 
-### D3. Subject is the repeat-detection key
+The summary is `IZG CI failure: <component> - <workflow> - <failure description>`. It contains no date, run ID or SHA. Newlines are replaced with spaces, and it is capped at 255 characters, Jira's summary limit.
 
-The subject is `IZG CI failure: <component> - <workflow> - <failure description>`. It contains no date, run ID or SHA. Newlines are replaced with spaces, and the subject is capped at 130 characters, the Opsgenie alert message limit.
+The action labels the ticket `ci-failure-<first 12 hex of sha1(summary)>`, and searches with:
 
-**Why:** the team wants a repeat of the same failure added as a comment on the existing ticket, and a different failure opened as a new ticket. Without Jira access, the only lever is what Opsgenie can match on, and the subject is the natural alias for its email integration. The failed step is a good-enough definition of "same failure": two different errors in `Build application` share a ticket, which is what you want while that step stays broken.
+```
+project = "<project-key>" AND labels = "ci-failure-<h>" AND statusCategory != Done ORDER BY created DESC
+```
 
-**Alternative:** include a hash of the error output in the subject. Rejected, because it would need log content, which conflicts with the no-logs rule, and timestamps in error messages would defeat repeat detection.
+**Why a label:** JQL's `summary ~` is a fuzzy text search and cannot match a summary exactly. A label matches exactly, and hashing keeps it short and free of spaces. `statusCategory != Done` means a closed ticket is not reused: the next failure opens a new ticket, which is what the team asked for.
+
+**Why the failed step defines "same failure":** two different errors in `Build application` share a ticket, which is what you want while that step stays broken.
+
+**Alternative:** include a hash of the error output. Rejected, because it would need log content, which conflicts with the no-logs rule, and timestamps in error messages would defeat repeat detection.
 
 ### D4. Failure description: reason, then last failed step in this job, then `unknown step`
 
@@ -72,34 +92,49 @@ Callers can pass `reason` for soft failures, such as the BOM's "PR left open". O
 
 **Why match on runner name:** in a workflow with several jobs, another job's failure must not be reported as this job's.
 
-**Fallback:** any API or `jq` error falls through to `unknown step`. The lookup must never prevent a report. That is also why it runs with `continue-on-error` semantics and `|| true` handling inside the script.
+**Fallback:** any API or `jq` error falls through to `unknown step`. The lookup must never prevent a report. The 2026-11-19 self-test confirmed detection works on a real runner.
 
-### D5. Secrets and the address are inputs
+### D5. The credential is an input, from org secrets
 
-`smtp-username`, `smtp-password` and `to` are required inputs. Callers pass `secrets.MAIL_USERNAME`, `secrets.MAIL_PASSWORD` and a new org secret, `secrets.JIRA_ALERT_EMAIL`.
+`jira-api-url` and `jira-auth` are required inputs. Callers pass `secrets.JIRA_API_URL` and `secrets.JIRA_API_AUTH_BASE64`.
 
-**Why:** composite actions cannot read secrets. Keeping the address in a secret is the only thing stopping anyone who reads a public workflow from creating IGDD tickets.
+**Why inputs:** composite actions cannot read secrets.
 
-**Empty `to`:** the action fails with a clear error. This is what happens when the org secret has not been shared with the calling repo. Sending nowhere silently would be worse.
+**Names:** the org admin created the org secrets as `JIRA_API_URL` and `JIRA_API_AUTH_BASE64` (2026-11-20), and the team chose to keep those names rather than separate `JIRA_CI_*` ones.
 
-### D6. Delivery uses `dawidd6/action-send-mail@v17` over SES
+**Known override in CC:** CC already has repo-level secrets with the same two names, and a repo secret overrides an org secret of the same name. So CC's nightly reports use CC's own repo secrets, while the other repos use the org secrets. That is harmless while both hold CC's credential (the trial). If the org secrets move to another account, also delete or update CC's repo-level secrets, or CC keeps filing tickets as the old account.
 
-This is the same action, version, server, port, TLS setting and `from` address the perf test uses. They are exposed as inputs with those values as defaults, and the body uses `convert_markdown: true`.
+**Which account:** open. The trial may use CC's credential; the CveRouter "API User" is the likely long-term account, because it is a non-person account already proven to create IGDD tickets.
 
-**Why:** these settings are proven to reach Opsgenie today, and reusing them means no new third-party dependency to vet.
+**Empty inputs:** the action fails with a clear error before calling Jira.
 
-If sending fails, the step fails, so a broken reporter shows up in the run.
+### D6. Delivery with `curl` and `jq`
+
+The action removes any trailing `/` and `/rest/api/<n>` from `jira-api-url` to get the site, then uses:
+- `POST <site>/rest/api/2/search/jql` to find an open ticket with the label
+- `POST <site>/rest/api/2/issue/<key>/comment` to comment on it
+- `POST <site>/rest/api/2/issue` to create a ticket
+- `GET <site>/rest/agile/1.0/board/<board-id>/sprint?state=active` when `sprint: active`
+
+Request bodies are built with `jq -n --arg`, never by string interpolation. Authentication is `Authorization: Basic <jira-auth>`; the header is never echoed. Each call records its HTTP status:
+- A create or comment that does not return 2xx fails the step, showing the status and Jira's `errorMessages` and `errors`.
+- A failed search emits a warning and falls through to create, so a report is never lost.
+- A failed sprint lookup emits a warning and creates the ticket without a sprint.
+
+Outputs `issue-key`, `issue-url` (`<site>/browse/<key>`) and `result` (`created` or `commented`) are written to `$GITHUB_OUTPUT`, and the run's step summary gets a link to the ticket.
 
 ### D7. Self-test workflow in this repo
 
 `test-report-ci-failure.yml` runs on `workflow_dispatch`, with a choice input `component` that defaults to `BOM`. It runs three steps:
 1. Check out the repo.
 2. A step named `Simulated failure` that runs `exit 1`.
-3. `uses: ./.github/actions/report-ci-failure` with `if: failure()`, and no `reason`, so that step detection is exercised.
+3. `uses: ./.github/actions/report-ci-failure` with `if: failure()`, and no `reason`, so that step detection is exercised. It passes the Jira secrets and otherwise uses the default ticket settings.
 
-Because the workflow name contains "Test", the subject is distinct from every real alert. Running it twice with the same input checks repeat detection. The run is red by design.
+Because the workflow name contains "Test", the summary is distinct from every real ticket. Running it twice checks repeat detection; the second run waits at least a minute, because Jira's search index can lag a newly created ticket by several seconds. The run is red by design.
 
 The job sets `permissions: contents: read, actions: read`.
+
+Before merge, the self-test is run from the `IGDD-2768` branch through a temporary `push` trigger, committed separately and reverted before the PR is opened.
 
 ### D8. Caller contract
 
@@ -107,30 +142,51 @@ Callers:
 - add `actions: read` to `permissions:`
 - add the step last
 - gate it with `if: failure() && github.event_name == 'schedule'`, so a developer's manual runs do not file tickets
+- pass `jira-api-url: ${{ secrets.JIRA_API_URL }}` and `jira-auth: ${{ secrets.JIRA_API_AUTH_BASE64 }}`
 - pin the action to `@v1`
 
 The BOM also reports its warning-only "PR left open for review" path. Its condition becomes `github.event_name == 'schedule' && (failure() || steps.left-open.outcome == 'success')`, with an explicit `reason`.
 
+### D9. Configurable ticket fields
+
+| Input | Default | Sent as |
+|---|---|---|
+| `project-key` | `IGDD` | `project.key` |
+| `issue-type` | `Bug` | `issuetype.name` |
+| `components` | the `component` input | `components[].name`, split on commas and trimmed |
+| `labels` | `ci-failure` | `labels`, split on commas, plus the repeat-detection label |
+| `priority` | empty | `priority.name`, only when set |
+| `assignee-account-id` | empty | `assignee.accountId`, only when set |
+| `epic-key` | empty | `parent.key`, only when set |
+| `sprint` | `none` | `customfield_10020` (Sprint) set to the active sprint's numeric ID when `active` |
+| `board-id` | `27` | board for the active-sprint lookup |
+
+**Why these defaults:** Bug is what IGDD-2768 asks for. The repo's own component is what the team uses today. Backlog by default avoids changing a sprint's scope without someone choosing to.
+
+**Why repeats never change fields:** a comment is the whole repeat behavior. Someone may have reassigned, re-prioritised or re-scheduled the ticket, and the action should not undo that.
+
+Invalid values, such as an unknown component, are not checked by the action. Jira rejects them, and the step fails with Jira's message.
+
 ## Risks / Trade-offs
 
-- **[Opsgenie may not match repeat alerts on the subject]** → Each repeat failure would create a new ticket. The self-test runs twice before any caller is wired. If two tickets appear, whoever owns the Opsgenie email integration sets the alias to the subject, and the Jira action to comment on a repeat. This is Opsgenie configuration, not a code change.
-- **[Repeat detection only works while the alert is open]** → Once someone closes the Opsgenie alert or the ticket, the next failure opens a new ticket. That is the desired behavior.
-- **[Renaming a step changes the key]** → The next failure after a rename opens a new ticket. This is acceptable and rare.
-- **[Org secrets not shared with a repo]** → The empty `to` fails loudly, as D5 describes. Rollout lists the secret-sharing step before any caller PR.
-- **[Step detection depends on `actions: read` and on the API's view of the running job]** → The fallback is `unknown step`. The report is still sent, but every unknown-step failure in a component shares one key. The self-test checks detection on a real runner.
-- **[Self-test files real tickets]** → One recognizable test ticket per verification. The person running it closes it afterwards.
-- **[A floating `v1` tag means callers get changes immediately]** → This matches how `cve-scan` and `ecr-scan-report` are consumed. Callers that need exact reproducibility can pin to `@v1.x.y`.
+- **[The account may lack permission in IGDD]** → The first self-test run shows a 401 or 403 immediately. Fix the account's permissions or switch accounts; no code change.
+- **[Two failures at the same moment]** → Both searches find nothing and two tickets are created. Very unlikely for nightly jobs; accepted.
+- **[Jira's search index lags new tickets]** → A repeat within seconds of a create could miss the new ticket. Irrelevant for nightly runs; the self-test waits a minute before its second run.
+- **[Renaming a step changes the key]** → The next failure after a rename opens a new ticket. Acceptable and rare.
+- **[One credential shared across four repos]** → Anyone with write access to those repos could read it through a workflow. Use an account limited to IGDD, and move to a dedicated account (or AWS Secrets Manager, IGDD-2767) after the trial.
+- **[Secrets not shared with a repo]** → The empty-input check fails loudly. Rollout lists the secret step before any caller PR.
+- **[Step detection depends on `actions: read`]** → The fallback is `unknown step`. The report is still made, but every unknown-step failure in a component shares one ticket.
+- **[Self-test files real tickets]** → Their summary names the "Test report-ci-failure" workflow, so they are easy to recognise. The person running it closes them.
+- **[A floating `v1` tag means callers get changes immediately]** → Matches how `cve-scan` and `ecr-scan-report` are consumed. Callers that need exact reproducibility can pin to `@v1.x.y`.
 
 ## Migration Plan
 
-1. Open a PR to `main` with the action, the self-test, README and Copilot-instructions updates, labelled `bump:minor`. The existing `validate.yml` actionlint job must pass.
-2. Before merging, an org admin creates `JIRA_ALERT_EMAIL`, and shares it plus `MAIL_USERNAME` and `MAIL_PASSWORD` with this repo and the three calling repos.
-3. Merge. `ci.yml` releases `v1.1.0` and moves `v1`. No workflow calls the action yet, so this is harmless.
-4. Dispatch the self-test twice. Confirm:
-   - one IGDD ticket, with a comment for the second run
-   - the subject names `Simulated failure`
-   - the body has the run link and no logs
-5. Wire the callers in separate PRs: `izg-configuration-console`, `izg-transformation-ui`, `izgw-bom`.
+1. Rework the action and self-test on branch `IGDD-2768`. The temporary push trigger stays for now.
+2. An org admin creates `JIRA_API_URL` and `JIRA_API_AUTH_BASE64`, shared with this repo and the three calling repos.
+3. Push to the branch; the self-test runs. Confirm one Bug with the expected summary, component and labels. Re-run after a minute; confirm a comment and no new ticket.
+4. Revert the temporary trigger, then open a PR to `main` labelled `bump:minor`. The existing `validate.yml` actionlint job must pass.
+5. Merge. `ci.yml` releases `v1.1.0` and moves `v1`. No workflow calls the action yet, so this is harmless.
+6. Wire the callers in separate PRs: `izg-configuration-console`, `izg-transformation-ui`, `izgw-bom`.
 
 **Rollback:**
 - Remove the caller step, which is one revert per repo.
@@ -138,5 +194,6 @@ The BOM also reports its warning-only "PR left open for review" path. Its condit
 
 ## Open Questions
 
-- Who owns the Opsgenie email integration, in case step 4 shows that repeat detection needs configuring?
-- Does Opsgenie put these tickets on the IGDD board with a component? The team said it doesn't matter for now.
+- Which Jira account backs `JIRA_API_AUTH_BASE64`: CC's credential, or the CveRouter "API User"?
+- Should tickets also carry the `Build / Deploy` component? (Callers can pass it through `components`.)
+- Should the action later read the credential from AWS Secrets Manager, in line with IGDD-2767?
