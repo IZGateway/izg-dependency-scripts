@@ -309,8 +309,6 @@ The run's step summary also links to the ticket.
 - The org secrets `JIRA_API_URL` and `JIRA_API_AUTH_BASE64` must be shared with the calling
   repository. Credentials are passed as inputs because composite actions cannot read
   `secrets.*` (same as `cve-scan`). **Never hardcode a credential** in a workflow.
-  A repo-level secret with the same name overrides the org secret: `izg-configuration-console`
-  has its own `JIRA_API_URL` / `JIRA_API_AUTH_BASE64`, so it reports with those.
 
 #### Usage
 
