@@ -13,9 +13,9 @@
 
 ## 3. First consumer: izgw-transform (IGDD-2766)
 
-- [ ] 3.1 Replace izgw-transform `security-updates.yml` with a thin caller pointing at `@IGDD-2766`
-- [ ] 3.2 Replace the auto-merge job in izgw-transform `maven.yml` with a `uses:` job pointing at `@IGDD-2766`
-- [ ] 3.3 Pre-merge test (temporary push trigger, bot PR into the izgw-transform feature branch): bot PR opened with a verified commit, CI passes, provenance and content checks pass, approved and merged; then revert the temporary commit and the bot's merge
+- [x] 3.1 Replace izgw-transform `security-updates.yml` with a thin caller pointing at `@IGDD-2766`
+- [x] 3.2 Replace the auto-merge job in izgw-transform `maven.yml` with a `uses:` job pointing at `@IGDD-2766`
+- [x] 3.3 Pre-merge test (temporary push trigger, bot PR into the izgw-transform feature branch): bot PR opened with a verified commit, CI passes, provenance and content checks pass, approved and merged; then revert the temporary commit and the bot's merge (passed 2026-11-23: izgw-transform PR #301, approved by github-actions and merged by izg-dependency-bot; reverted afterwards)
 - [ ] 3.4 Merge this change with label `bump:minor`, confirm the `v1` tag moved, and switch the izgw-transform callers to `@v1`
 
 ## 4. Follow-ups (not in this change)
