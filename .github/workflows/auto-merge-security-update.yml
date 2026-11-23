@@ -1,0 +1,167 @@
+name: Auto-merge Security Update
+
+# Reusable workflow (workflow_call). Approves and merges a security-update PR opened by
+# izg-dependency-bot, after the caller's CI build has passed.
+#
+# Call it from the caller's CI workflow as a job that `needs:` the build job, on
+# pull_request events. GitHub only starts the job after the build succeeds, so "the build,
+# tests and deploy passed" is guaranteed by the caller's `needs:`. This workflow then checks
+# that the PR really is the bot's own update before it approves and merges:
+#   1. the job only runs for PRs into base-branch, from this repository, opened by
+#      bot-login, on a <branch-prefix>* branch
+#   2. provenance: the repository activity log shows that only bot-login ever wrote to the
+#      PR branch, it was never force-pushed, and its last write is the tested head commit
+#   3. content: every changed file matches allowed-files, and every commit is authored by
+#      bot-login and committed and signed by GitHub (web-flow), with a verified signature
+# Any check that cannot be confirmed refuses the merge (fails closed).
+#
+# The approval comes from github-actions[bot] (GITHUB_TOKEN), a different identity from the
+# PR author. This needs the repository setting "Allow GitHub Actions to create and approve
+# pull requests". The merge uses the izg-dependency-bot App token so that the push to
+# base-branch starts the caller's CI (pushes made with GITHUB_TOKEN start no workflows).
+#
+# Caller permissions: contents: read, pull-requests: write.
+#
+# Works for any ecosystem: set allowed-files to the files the update may touch, for example
+# '(^|/)pom\.xml$' for Maven or '^package(-lock)?\.json$' for npm.
+
+on:
+  workflow_call:
+    inputs:
+      base-branch:
+        description: Only PRs into this branch are merged.
+        type: string
+        default: develop
+      bot-login:
+        description: Login of the GitHub App bot that opens security-update PRs.
+        type: string
+        default: izg-dependency-bot[bot]
+      branch-prefix:
+        description: Only PRs from branches starting with this prefix are merged.
+        type: string
+        default: security-updates/nightly-
+      allowed-files:
+        description: Extended regex that every changed file path must match.
+        type: string
+        default: '(^|/)pom\.xml$'
+      merge-method:
+        description: merge, squash or rebase.
+        type: string
+        default: merge
+    secrets:
+      dependency-bot-app-id:
+        required: true
+      dependency-bot-app-key:
+        required: true
+
+jobs:
+  auto-merge:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.base.ref == inputs.base-branch &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login == inputs.bot-login &&
+      startsWith(github.event.pull_request.head.ref, inputs.branch-prefix)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      HEAD_REF: ${{ github.event.pull_request.head.ref }}
+      GH_REPO: ${{ github.repository }}
+      BOT_LOGIN: ${{ inputs.bot-login }}
+    steps:
+      # Commit metadata (author, committer) is chosen by whoever creates the commit, but the
+      # repository activity log records the authenticated actor that actually created or
+      # updated the branch, and that cannot be faked.
+      - name: Verify only the bot wrote to the PR branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          ACTIVITY=$(gh api -X GET "repos/$GH_REPO/activity" --paginate \
+            -f ref="refs/heads/$HEAD_REF" -f direction=asc -f per_page=100 \
+            --jq '.[] | "\(.actor.login // "unknown") \(.activity_type) \(.after)"')
+          echo "Branch activity (actor type after):"
+          echo "${ACTIVITY:-<none>}"
+          if [ -z "$ACTIVITY" ]; then
+            echo "::error::Auto-merge refused: no activity recorded for $HEAD_REF, so its provenance cannot be verified."
+            exit 1
+          fi
+          ACTORS=$(printf '%s\n' "$ACTIVITY" | awk '{print $1}' | sort -u)
+          if [ "$ACTORS" != "$BOT_LOGIN" ]; then
+            echo "::error::Auto-merge refused: $HEAD_REF was written by actor(s) other than $BOT_LOGIN: $(echo "$ACTORS" | xargs)"
+            exit 1
+          fi
+          if printf '%s\n' "$ACTIVITY" | awk '{print $2}' | grep -qx force_push; then
+            echo "::error::Auto-merge refused: $HEAD_REF has been force-pushed."
+            exit 1
+          fi
+          LAST_AFTER=$(printf '%s\n' "$ACTIVITY" | tail -1 | awk '{print $3}')
+          if [ "$LAST_AFTER" != "$HEAD_SHA" ]; then
+            echo "::error::Auto-merge refused: last recorded write to $HEAD_REF is $LAST_AFTER, not the tested head $HEAD_SHA."
+            exit 1
+          fi
+          echo "Provenance OK: every write to $HEAD_REF was made by $BOT_LOGIN."
+
+      # GitHub records its own signing account, web-flow, as the COMMITTER of commits it
+      # creates and signs through the Git Data API, never the bot. web-flow alone does not
+      # prove who made the commit; the activity-log check above does.
+      - name: Verify PR only contains bot-authored, allowed changes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ALLOWED_FILES: ${{ inputs.allowed-files }}
+        run: |
+          set -euo pipefail
+          FILES=$(gh api "repos/$GH_REPO/pulls/$PR_NUMBER/files" --paginate --jq '.[].filename' | sort -u)
+          echo "Changed files:"
+          echo "${FILES:-<none>}"
+          if [ -z "$FILES" ]; then
+            echo "::error::Auto-merge refused: the PR changes no files."
+            exit 1
+          fi
+          DISALLOWED=$(printf '%s\n' "$FILES" | grep -Ev -- "$ALLOWED_FILES" || true)
+          if [ -n "$DISALLOWED" ]; then
+            echo "::error::Auto-merge refused: the PR changes files not matching '$ALLOWED_FILES': $(echo "$DISALLOWED" | xargs)"
+            exit 1
+          fi
+          # One line per distinct "author committer verified" combination across all commits.
+          IDENTITIES=$(gh api "repos/$GH_REPO/pulls/$PR_NUMBER/commits" --paginate \
+            --jq '.[] | "\(.author.login // "unknown") \(.committer.login // "unknown") \(.commit.verification.verified)"' \
+            | sort -u)
+          echo "Commit author / committer / verified: $IDENTITIES"
+          if [ "$IDENTITIES" != "$BOT_LOGIN web-flow true" ]; then
+            echo "::error::Auto-merge refused: every commit must be authored by $BOT_LOGIN, committed and signed by GitHub (web-flow), and verified."
+            exit 1
+          fi
+
+      - name: Approve PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh pr review "$PR_NUMBER" --approve \
+            --body "Auto-approved: automated security patch update passed CI in run $RUN_URL."
+
+      - name: Generate Dependency Bot App Token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.dependency-bot-app-id }}
+          private-key: ${{ secrets.dependency-bot-app-key }}
+
+      # --match-head-commit ensures only the commit tested above is merged.
+      - name: Merge PR
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          MERGE_METHOD: ${{ inputs.merge-method }}
+          BASE_BRANCH: ${{ inputs.base-branch }}
+        run: |
+          case "$MERGE_METHOD" in
+            merge|squash|rebase) ;;
+            *) echo "::error::merge-method must be merge, squash or rebase, not '$MERGE_METHOD'."; exit 1 ;;
+          esac
+          gh pr merge "$PR_NUMBER" "--$MERGE_METHOD" --delete-branch --match-head-commit "$HEAD_SHA"
+          echo "Merged PR #$PR_NUMBER into $BASE_BRANCH." >> "$GITHUB_STEP_SUMMARY"

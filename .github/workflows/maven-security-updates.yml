@@ -1,0 +1,389 @@
+name: Maven Security Updates
+
+# Reusable workflow (workflow_call). Applies PATCH releases to the dependency and plugin
+# versions a Maven project sets itself, then opens a pull request as izg-dependency-bot.
+# Versions managed upstream (izgw-bom and anything listed in the caller's exclusions file)
+# are never changed.
+#
+# The PR is built and tested by the caller's CI workflow like any other PR. When
+# auto-merge is true, the PR branch is named <branch-prefix>/nightly-*, and the shared
+# auto-merge-security-update.yml workflow (called from the caller's CI) approves and merges
+# it once that build passes. Otherwise the branch is <branch-prefix>/manual-* and the PR
+# waits for a human review.
+#
+# Caller requirements (see README "maven-security-updates"):
+#   - automation-exclusions.txt (or exclusions-file): groupId:artifactId patterns to skip
+#   - pom.xml: versions-maven-plugin configured for patch-only updates, and versions held in
+#     properties so versions:update-properties can change them
+#   - the izg-dependency-bot GitHub App installed on the repository, and its credentials
+#     passed as the dependency-bot-app-id / dependency-bot-app-key secrets
+#   - caller permissions: contents: read, packages: read, actions: write, pull-requests: read
+
+on:
+  workflow_call:
+    inputs:
+      base-branch:
+        description: Branch to update and to open the PR against.
+        type: string
+        default: develop
+      auto-merge:
+        description: >
+          true names the branch <branch-prefix>/nightly-* so the shared auto-merge workflow
+          may merge it after CI passes. false names it <branch-prefix>/manual-* (review only).
+        type: boolean
+        default: false
+      maven-servers:
+        description: >
+          Space- or newline-separated Maven server ids (from the pom's <repositories>) that
+          resolve from GitHub Packages. Each gets GITHUB_TOKEN credentials in settings.xml.
+        type: string
+        default: github-bom
+      java-version:
+        type: string
+        default: "21"
+      maven-version:
+        type: string
+        default: "3.9.0"
+      exclusions-file:
+        description: File of groupId:artifactId patterns that are never updated.
+        type: string
+        default: automation-exclusions.txt
+      verify-command:
+        description: Quick check run before opening the PR. The full build runs on the PR.
+        type: string
+        default: mvn -B -ntp test-compile -DskipDependencyCheck=true
+      ci-workflow:
+        description: File name of the caller's CI workflow that builds PRs (watched for cancellation).
+        type: string
+        default: maven.yml
+      ci-description:
+        description: What the caller's CI checks, used in the PR description.
+        type: string
+        default: the CI build
+      branch-prefix:
+        type: string
+        default: security-updates
+      pr-labels:
+        description: Comma-separated labels for the PR. Each must already exist.
+        type: string
+        default: dependencies
+      max-build-reruns:
+        description: How many times to re-run the PR's CI build if it is cancelled while queued.
+        type: number
+        default: 3
+    secrets:
+      dependency-bot-app-id:
+        required: true
+      dependency-bot-app-key:
+        required: true
+    outputs:
+      pr-url:
+        description: URL of the PR opened, or empty when there were no updates.
+        value: ${{ jobs.security-updates.outputs.pr-url }}
+      branch:
+        description: PR branch name, or empty when there were no updates.
+        value: ${{ jobs.security-updates.outputs.branch }}
+
+jobs:
+  security-updates:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    outputs:
+      pr-url: ${{ steps.open-pr.outputs.pr-url }}
+      branch: ${{ steps.open-pr.outputs.branch }}
+      head-sha: ${{ steps.open-pr.outputs.head-sha }}
+    env:
+      BASE_BRANCH: ${{ inputs.base-branch }}
+      EXCLUSIONS_FILE: ${{ inputs.exclusions-file }}
+    steps:
+      # All writes (branch, commit, PR, closing superseded PRs) use the izg-dependency-bot App
+      # token. Events raised with GITHUB_TOKEN do not start workflows, so a PR opened with it
+      # would never run the caller's CI. GITHUB_TOKEN is only used to read GitHub Packages.
+      - name: Generate Dependency Bot App Token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.dependency-bot-app-id }}
+          private-key: ${{ secrets.dependency-bot-app-key }}
+
+      - name: Checkout ${{ inputs.base-branch }}
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.base-branch }}
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Set up JDK ${{ inputs.java-version }}
+        uses: actions/setup-java@v6
+        with:
+          java-version: ${{ inputs.java-version }}
+          distribution: temurin
+          cache: maven
+
+      - name: Set up Maven ${{ inputs.maven-version }}
+        uses: stCarolas/setup-maven@v5.1
+        with:
+          maven-version: ${{ inputs.maven-version }}
+
+      - name: Configure Maven authentication
+        env:
+          MAVEN_SERVERS: ${{ inputs.maven-servers }}
+          SERVER_USER: ${{ github.actor }}
+          SERVER_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p ~/.m2
+          {
+            echo "<settings><servers>"
+            for id in $MAVEN_SERVERS; do
+              echo "<server><id>${id}</id><username>${SERVER_USER}</username><password>${SERVER_TOKEN}</password></server>"
+            done
+            echo "</servers></settings>"
+          } > ~/.m2/settings.xml
+          echo "GitHub Packages credentials configured for: $(echo "$MAVEN_SERVERS" | xargs)"
+
+      - name: Read automation exclusions
+        run: |
+          if [ ! -f "$EXCLUSIONS_FILE" ]; then
+            echo "::error::$EXCLUSIONS_FILE not found. Create it (it may list upstream artifacts such as gov.cdc.izgw:*)."
+            exit 1
+          fi
+          EXCLUDES=$(grep -v '^\s*#' "$EXCLUSIONS_FILE" | grep -v '^\s*$' | paste -sd ',' - || true)
+          echo "EXCLUDES=$EXCLUDES" >> "$GITHUB_ENV"
+          echo "Excluding from automation: ${EXCLUDES:-<nothing>}"
+
+      - name: Apply patch version updates
+        run: |
+          set -o pipefail
+          # Patch-only behaviour comes from the versions-maven-plugin configuration in the
+          # caller's pom.xml (POM configuration takes precedence over -D flags).
+          # use-latest-versions: literal <version>s in dependencies / dependencyManagement.
+          # update-properties:   ${*.version} properties defined in the project (incl. plugins).
+          mvn -B -ntp versions:use-latest-versions versions:update-properties \
+            -Dexcludes="$EXCLUDES" \
+            -DprocessDependencyManagementTransitive=false \
+            2>&1 | tee apply-updates.log
+
+          if git diff --quiet; then
+            echo "HAS_CHANGES=false" >> "$GITHUB_ENV"
+            echo "No patch updates available."
+          else
+            echo "HAS_CHANGES=true" >> "$GITHUB_ENV"
+            git diff --stat
+          fi
+
+      - name: Report no updates
+        if: env.HAS_CHANGES == 'false'
+        run: |
+          {
+            echo "## No patch updates available"
+            echo ""
+            echo "All project-owned dependencies and plugins are on their latest patch release."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Fail fast before opening a PR. The full build runs on the PR itself in the caller's CI.
+      - name: Verify updated build
+        if: env.HAS_CHANGES == 'true'
+        env:
+          VERIFY_COMMAND: ${{ inputs.verify-command }}
+        run: bash -c "$VERIFY_COMMAND"
+
+      - name: Build PR body
+        if: env.HAS_CHANGES == 'true'
+        env:
+          AUTO_MERGE: ${{ inputs.auto-merge }}
+          CI_DESCRIPTION: ${{ inputs.ci-description }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          # One row per changed <name>value</name> element across all changed poms: old -> new.
+          TABLE=$(git diff -U0 --no-color | python3 -c '
+          import re, sys
+          old, new = {}, {}
+          for line in sys.stdin:
+              m = re.match(r"([-+])\s*<([\w.-]+)>([^<]+)</\2>", line)
+              if m:
+                  (old if m.group(1) == "-" else new)[m.group(2)] = m.group(3)
+          for k in new:
+              code = lambda v: "\x60%s\x60" % v   # \x60 is a backtick (Markdown code span)
+              print("| %s | %s | %s |" % (code(k), code(old.get(k, "?")), code(new[k])))
+          ')
+
+          if [ "$AUTO_MERGE" = "true" ]; then
+            MERGE_NOTE="**Auto-merge:** yes. This PR is approved and merged automatically once $CI_DESCRIPTION passes."
+          else
+            MERGE_NOTE="**Auto-merge:** no. This PR came from a manual run, so it needs a human review."
+          fi
+
+          {
+            echo "## Automated patch updates"
+            echo ""
+            echo "Created by the [Security Updates workflow]($RUN_URL)."
+            echo "Only **patch** releases of dependencies and plugins owned by this project are applied."
+            echo ""
+            echo "$MERGE_NOTE"
+            echo ""
+            echo "### Version changes"
+            echo ""
+            echo "| Property | Old | New |"
+            echo "|----------|-----|-----|"
+            echo "$TABLE"
+            echo ""
+            echo "### Not updated by this workflow"
+            echo ""
+            echo "Artifacts listed in \`$EXCLUSIONS_FILE\`:"
+            echo ""
+            grep -v '^\s*#' "$EXCLUSIONS_FILE" | grep -v '^\s*$' | sed "s/.*/- \`&\`/" || true
+            echo ""
+            echo "<details><summary>Diff</summary>"
+            echo ""
+            echo '```diff'
+            git diff --no-color
+            echo '```'
+            echo "</details>"
+          } > pr-body.md
+          cat pr-body.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Open pull request
+        id: open-pr
+        if: env.HAS_CHANGES == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          AUTO_MERGE: ${{ inputs.auto-merge }}
+          BRANCH_PREFIX: ${{ inputs.branch-prefix }}
+          PR_LABELS: ${{ inputs.pr-labels }}
+          RUN_SUFFIX: ${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          # The branch name tells auto-merge-security-update.yml whether this PR may be merged
+          # automatically: <prefix>/nightly-* (yes) or <prefix>/manual-* (no). run_id and
+          # run_attempt keep it unique when two runs start in the same minute.
+          if [ "$AUTO_MERGE" = "true" ]; then KIND=nightly; else KIND=manual; fi
+          BRANCH="${BRANCH_PREFIX}/${KIND}-$(date -u +'%Y%m%d-%H%M')-${RUN_SUFFIX}"
+
+          # Create the commit through the Git Data API instead of `git commit && git push`.
+          # GitHub signs a commit the App creates this way: it shows as verified, with
+          # izg-dependency-bot[bot] as author and GitHub's signing account (web-flow) as
+          # committer. auto-merge-security-update.yml requires exactly that, so the author
+          # cannot be faked with a local `git commit --author=...`.
+          BASE_SHA=$(git rev-parse HEAD)
+          BASE_TREE=$(git rev-parse 'HEAD^{tree}')
+          ENTRIES='[]'
+          while IFS= read -r FILE; do
+            BLOB_SHA=$(jq -n --rawfile c <(base64 -w0 "$FILE") '{content: $c, encoding: "base64"}' \
+              | gh api "repos/$GH_REPO/git/blobs" --input - --jq .sha)
+            ENTRIES=$(jq -c --arg path "$FILE" --arg sha "$BLOB_SHA" \
+              '. + [{path: $path, mode: "100644", type: "blob", sha: $sha}]' <<< "$ENTRIES")
+          done < <(git diff --name-only)
+          TREE_SHA=$(jq -n --arg base "$BASE_TREE" --argjson tree "$ENTRIES" '{base_tree: $base, tree: $tree}' \
+            | gh api "repos/$GH_REPO/git/trees" --input - --jq .sha)
+          COMMIT_SHA=$(jq -n --arg msg "chore(deps): apply patch dependency updates $(date -u +'%Y-%m-%d')" \
+              --arg tree "$TREE_SHA" --arg parent "$BASE_SHA" \
+              '{message: $msg, tree: $tree, parents: [$parent]}' \
+            | gh api "repos/$GH_REPO/git/commits" --input - --jq .sha)
+          gh api "repos/$GH_REPO/git/refs" -f ref="refs/heads/$BRANCH" -f sha="$COMMIT_SHA" > /dev/null
+          echo "Created $BRANCH at $COMMIT_SHA"
+
+          PR_URL=$(gh pr create \
+            --base "$BASE_BRANCH" \
+            --head "$BRANCH" \
+            --title "chore(deps): security patch updates $(date -u +'%Y-%m-%d')" \
+            --body-file pr-body.md \
+            --label "$PR_LABELS")
+          echo "PR created: $PR_URL"
+          {
+            echo "pr-url=$PR_URL"
+            echo "branch=$BRANCH"
+            echo "head-sha=$COMMIT_SHA"
+          } >> "$GITHUB_OUTPUT"
+
+          # Close earlier open NIGHTLY PRs; this one supersedes them. Manual-run PRs are left
+          # alone because someone may be reviewing them.
+          gh pr list --state open --base "$BASE_BRANCH" --json number,headRefName \
+            --jq ".[] | select(.headRefName | startswith(\"${BRANCH_PREFIX}/nightly-\")) | select(.headRefName != \"$BRANCH\") | .number" \
+          | while read -r OLD; do
+              echo "Closing superseded PR #$OLD"
+              gh pr close "$OLD" --delete-branch --comment "Superseded by $PR_URL"
+            done
+
+          {
+            echo ""
+            echo "## Pull request created"
+            echo ""
+            echo "$PR_URL"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: security-updates-logs
+          if-no-files-found: ignore
+          path: |
+            **/pom.xml
+            apply-updates.log
+            pr-body.md
+
+  # A caller CI workflow with a concurrency group keeps only ONE pending run per group. If
+  # another run queues behind this PR's build, GitHub cancels the pending build and its
+  # auto-merge job never runs. This job watches the PR's build and re-runs it if it was
+  # cancelled, so an update is not dropped silently.
+  watch-pr-build:
+    needs: security-updates
+    if: needs.security-updates.outputs.branch != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    permissions:
+      actions: write        # gh run rerun
+      pull-requests: read
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      BRANCH: ${{ needs.security-updates.outputs.branch }}
+      HEAD_SHA: ${{ needs.security-updates.outputs.head-sha }}
+      CI_WORKFLOW: ${{ inputs.ci-workflow }}
+      MAX_RERUNS: ${{ inputs.max-build-reruns }}
+    steps:
+      - name: Re-run the PR build if it was cancelled while queued
+        run: |
+          set -euo pipefail
+          RERUNS=0
+          RUN_ID=""
+          while true; do
+            if [ -z "$RUN_ID" ]; then
+              RUN_ID=$(gh run list --workflow "$CI_WORKFLOW" --event pull_request --branch "$BRANCH" \
+                --commit "$HEAD_SHA" --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+              if [ -z "$RUN_ID" ]; then
+                echo "No $CI_WORKFLOW run registered for $BRANCH yet; waiting."
+                sleep 30
+                continue
+              fi
+              echo "Watching $CI_WORKFLOW run $RUN_ID"
+            fi
+
+            read -r STATUS CONCLUSION < <(gh run view "$RUN_ID" --json status,conclusion \
+              --jq '"\(.status) \(.conclusion // "none")"')
+            if [ "$STATUS" != "completed" ]; then
+              sleep 60
+              continue
+            fi
+
+            if [ "$CONCLUSION" != "cancelled" ]; then
+              echo "$CI_WORKFLOW run $RUN_ID finished: $CONCLUSION"
+              exit 0
+            fi
+
+            STATE=$(gh pr view "$BRANCH" --json state --jq .state)
+            if [ "$STATE" != "OPEN" ]; then
+              echo "PR for $BRANCH is $STATE; not re-running."
+              exit 0
+            fi
+            if [ "$RERUNS" -ge "$MAX_RERUNS" ]; then
+              echo "::error::$CI_WORKFLOW run $RUN_ID was cancelled $((RERUNS + 1)) times; giving up. Re-run it by hand."
+              exit 1
+            fi
+            RERUNS=$((RERUNS + 1))
+            echo "::warning::$CI_WORKFLOW run $RUN_ID was cancelled (likely displaced in its concurrency queue). Re-run $RERUNS of $MAX_RERUNS."
+            gh run rerun "$RUN_ID"
+            sleep 30
+          done
