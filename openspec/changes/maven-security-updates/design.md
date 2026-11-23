@@ -1,13 +1,19 @@
 # Design: maven-security-updates
 
-## D1: Reusable workflows, not composite actions
+## D1: Composite actions for the logic, reusable workflows as recipes
 
-Both pieces are whole jobs with their own runner, permissions and secrets, so they are reusable workflows (`workflow_call`).
-- A composite action cannot read `secrets.*`. Both pieces need the App credentials and `GITHUB_TOKEN`.
-- `maven-security-updates` has two jobs (open PR, then watch the PR build).
-- `auto-merge-security-update` must run as its own job that `needs:` the caller's build job. A reusable-workflow job supports `needs:` and `if:` in the caller.
+The logic lives in five composite actions (`.github/actions/`), and the two reusable workflows (`workflow_call`) are short recipes that wire them together.
 
-In a called workflow, `github.*` (repository, event, actor) and `GITHUB_TOKEN` belong to the caller, so `actions/checkout` and `gh` act on the caller's repository with no extra input.
+- **Actions are the reusable parts.** Three of them (`open-signed-pr`, `rerun-cancelled-build`, `auto-merge-bot-pr`) do not depend on Maven, so an npm workflow (IGDD-2969) or izgw-bom can use them without the Maven steps. `setup-izg-maven` can replace the hand-written `settings.xml` in every IZ Gateway Maven workflow.
+- **Workflows keep the caller small.** A caller still needs only ~45 lines for Security Updates and ~15 lines in its CI. Calling the actions directly would make every caller define jobs, runners, permissions, checkout and setup itself, so callers use the workflows.
+- **Whole-job concerns stay in the workflows:** runner, job permissions, `timeout-minutes`, job outputs, the second `watch-pr-build` job, and the auto-merge job-level `if:` (so other PRs show a skipped job rather than a failure). These cannot be expressed in a composite action.
+- **Secrets are inputs to the actions.** `secrets.*` is empty inside a composite action, so the workflows pass `GITHUB_TOKEN`, the App token, or the App id and key.
+
+In a called workflow and in a composite action, `github.*` (repository, event, actor) belongs to the caller, so `actions/checkout` and `gh` act on the caller's repository with no extra input.
+
+## D1a: How the workflows reference the actions
+
+The workflows use `IZGateway/izg-dependency-scripts/.github/actions/<name>@v1`, not `./.github/actions/<name>`. Inside a reusable workflow a local path is resolved against the caller's checked-out repository, which does not contain these actions. The `@v1` ref keeps workflows and actions on the same release. To test a branch of this repository end to end, the action refs in the workflows are pointed at the branch temporarily and reverted before merge. A breaking change to an action's inputs needs a `v2` release of both.
 
 ## D2: Version pin `@v1`
 

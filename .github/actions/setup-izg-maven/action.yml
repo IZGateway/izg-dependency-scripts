@@ -1,0 +1,65 @@
+name: Set up IZ Gateway Maven
+description: >
+  Sets up a JDK and Maven and writes ~/.m2/settings.xml with credentials for the Maven
+  repositories an IZ Gateway project resolves from GitHub Packages (izgw-bom, izgw-core,
+  v2tofhir and so on). Replaces the hand-written settings.xml heredoc in each repository's
+  workflows.
+
+  Run it after actions/checkout: the Maven cache key is built from the checked-out pom files.
+
+  WHY THE TOKEN IS AN INPUT: composite actions cannot read the secrets context
+  (secrets.* evaluates to an empty string inside one), so the caller passes
+  secrets.GITHUB_TOKEN. The calling job needs "packages: read".
+
+inputs:
+  github-token:
+    description: Token used to read GitHub Packages. Pass secrets.GITHUB_TOKEN.
+    required: true
+  maven-servers:
+    description: >
+      Space- or newline-separated server ids from the pom's <repositories> that resolve from
+      GitHub Packages, for example "github-bom github-core v2tofhir". Each one gets the token.
+    required: false
+    default: github-bom
+  java-version:
+    required: false
+    default: "21"
+  maven-version:
+    required: false
+    default: "3.9.0"
+
+runs:
+  using: composite
+  steps:
+    - name: Set up JDK ${{ inputs.java-version }}
+      uses: actions/setup-java@v6
+      with:
+        java-version: ${{ inputs.java-version }}
+        distribution: temurin
+        cache: maven
+
+    - name: Set up Maven ${{ inputs.maven-version }}
+      uses: stCarolas/setup-maven@v5.1
+      with:
+        maven-version: ${{ inputs.maven-version }}
+
+    - name: Configure Maven authentication
+      shell: bash
+      env:
+        MAVEN_SERVERS: ${{ inputs.maven-servers }}
+        SERVER_USER: ${{ github.actor }}
+        SERVER_TOKEN: ${{ inputs.github-token }}
+      run: |
+        if [ -z "$SERVER_TOKEN" ]; then
+          echo "::error::setup-izg-maven: github-token is empty. Pass secrets.GITHUB_TOKEN."
+          exit 1
+        fi
+        mkdir -p ~/.m2
+        {
+          echo "<settings><servers>"
+          for id in $MAVEN_SERVERS; do
+            echo "<server><id>${id}</id><username>${SERVER_USER}</username><password>${SERVER_TOKEN}</password></server>"
+          done
+          echo "</servers></settings>"
+        } > ~/.m2/settings.xml
+        echo "GitHub Packages credentials configured for: $(echo "$MAVEN_SERVERS" | xargs)"

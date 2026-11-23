@@ -15,7 +15,13 @@ That is about 300 lines of workflow in `security-updates.yml` plus about 110 lin
 
 - **New reusable workflow** `.github/workflows/maven-security-updates.yml`: applies patch updates (`versions:use-latest-versions`, `versions:update-properties`) honouring the caller's exclusions file, runs a quick verify, creates a GitHub-signed commit through the Git Data API, opens the PR, closes superseded nightly PRs, and re-runs the PR's CI build if it is cancelled while queued. Repository-specific values are inputs.
 - **New reusable workflow** `.github/workflows/auto-merge-security-update.yml`: called from the consumer's CI as a job that `needs:` the build. Checks provenance (activity log), content (allowed files, bot author, `web-flow` committer, verified signature), approves as `github-actions[bot]`, and merges with the bot token and `--match-head-commit`. Not specific to Maven (`allowed-files` input), so the npm repositories can reuse it.
-- **README** sections for both, including what the calling repository needs.
+- **Five new composite actions** in `.github/actions/` hold the logic; the two workflows above are short recipes that call them, so other flows (for example IGDD-2969's npm security updates, or izgw-bom) can reuse the parts:
+  - `setup-izg-maven` (Maven): JDK, Maven and GitHub Packages credentials in `settings.xml`. Also usable by every IZ Gateway Maven workflow that writes `settings.xml` by hand today.
+  - `maven-patch-updates` (Maven): apply patch updates, quick verify, PR description.
+  - `open-signed-pr` (any ecosystem): GitHub-signed bot commit, PR, close superseded nightly PRs.
+  - `rerun-cancelled-build` (any ecosystem): re-run a PR build cancelled in a concurrency queue.
+  - `auto-merge-bot-pr` (any ecosystem): eligibility, provenance and content checks, approve, merge.
+- **README** sections for the workflows and the actions, including what the calling repository needs.
 - **Bump label:** `bump:minor`. New capabilities; nothing existing changes.
 
 Consumers keep only a thin `security-updates.yml` caller, a short job in their CI workflow, `automation-exclusions.txt`, `versions-rules.xml` and their pom changes.
@@ -30,6 +36,7 @@ Consumers keep only a thin `security-updates.yml` caller, a short job in their C
 
 - `maven-security-updates`: reusable workflow that opens the patch-update PR for a Maven project.
 - `security-update-auto-merge`: reusable workflow that approves and merges the bot's PR after CI passes, only when its provenance and content checks pass.
+- `bot-pr-actions`: the composite actions both workflows are built from, usable on their own.
 
 ### Modified Capabilities
 
@@ -37,7 +44,7 @@ _(none)_
 
 ## Impact
 
-- **izg-dependency-scripts:** two new workflow files and README sections. No change to existing actions, workflows or npm scripts.
+- **izg-dependency-scripts:** two new workflow files, five new composite actions, and README sections. No change to existing actions, workflows or npm scripts.
 - **izgw-transform** (in scope): `security-updates.yml` becomes a thin caller; the auto-merge job in `maven.yml` becomes a `uses:` job. Pinned to `@v1`.
 - **izgw-core, izgw-hub, v2tofhir:** not changed here; each adopts the workflows under its own ticket.
 - **Public repository:** the workflows contain no internal hostnames, credentials or logs. Credentials come from the caller as secrets.

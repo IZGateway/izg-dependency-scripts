@@ -55,6 +55,9 @@ on:
         required: true
 
 jobs:
+  # The job-level `if:` skips every PR that is not the bot's nightly update, so other PRs show
+  # a skipped job instead of a failure. auto-merge-bot-pr repeats these checks (fail closed)
+  # and then checks provenance and content before it approves and merges.
   auto-merge:
     if: >-
       github.event_name == 'pull_request' &&
@@ -66,104 +69,17 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-    env:
-      PR_NUMBER: ${{ github.event.pull_request.number }}
-      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-      HEAD_REF: ${{ github.event.pull_request.head.ref }}
-      GH_REPO: ${{ github.repository }}
-      BOT_LOGIN: ${{ inputs.bot-login }}
     steps:
-      # Commit metadata (author, committer) is chosen by whoever creates the commit, but the
-      # repository activity log records the authenticated actor that actually created or
-      # updated the branch, and that cannot be faked.
-      - name: Verify only the bot wrote to the PR branch
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          ACTIVITY=$(gh api -X GET "repos/$GH_REPO/activity" --paginate \
-            -f ref="refs/heads/$HEAD_REF" -f direction=asc -f per_page=100 \
-            --jq '.[] | "\(.actor.login // "unknown") \(.activity_type) \(.after)"')
-          echo "Branch activity (actor type after):"
-          echo "${ACTIVITY:-<none>}"
-          if [ -z "$ACTIVITY" ]; then
-            echo "::error::Auto-merge refused: no activity recorded for $HEAD_REF, so its provenance cannot be verified."
-            exit 1
-          fi
-          ACTORS=$(printf '%s\n' "$ACTIVITY" | awk '{print $1}' | sort -u)
-          if [ "$ACTORS" != "$BOT_LOGIN" ]; then
-            echo "::error::Auto-merge refused: $HEAD_REF was written by actor(s) other than $BOT_LOGIN: $(echo "$ACTORS" | xargs)"
-            exit 1
-          fi
-          if printf '%s\n' "$ACTIVITY" | awk '{print $2}' | grep -qx force_push; then
-            echo "::error::Auto-merge refused: $HEAD_REF has been force-pushed."
-            exit 1
-          fi
-          LAST_AFTER=$(printf '%s\n' "$ACTIVITY" | tail -1 | awk '{print $3}')
-          if [ "$LAST_AFTER" != "$HEAD_SHA" ]; then
-            echo "::error::Auto-merge refused: last recorded write to $HEAD_REF is $LAST_AFTER, not the tested head $HEAD_SHA."
-            exit 1
-          fi
-          echo "Provenance OK: every write to $HEAD_REF was made by $BOT_LOGIN."
-
-      # GitHub records its own signing account, web-flow, as the COMMITTER of commits it
-      # creates and signs through the Git Data API, never the bot. web-flow alone does not
-      # prove who made the commit; the activity-log check above does.
-      - name: Verify PR only contains bot-authored, allowed changes
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ALLOWED_FILES: ${{ inputs.allowed-files }}
-        run: |
-          set -euo pipefail
-          FILES=$(gh api "repos/$GH_REPO/pulls/$PR_NUMBER/files" --paginate --jq '.[].filename' | sort -u)
-          echo "Changed files:"
-          echo "${FILES:-<none>}"
-          if [ -z "$FILES" ]; then
-            echo "::error::Auto-merge refused: the PR changes no files."
-            exit 1
-          fi
-          DISALLOWED=$(printf '%s\n' "$FILES" | grep -Ev -- "$ALLOWED_FILES" || true)
-          if [ -n "$DISALLOWED" ]; then
-            echo "::error::Auto-merge refused: the PR changes files not matching '$ALLOWED_FILES': $(echo "$DISALLOWED" | xargs)"
-            exit 1
-          fi
-          # One line per distinct "author committer verified" combination across all commits.
-          IDENTITIES=$(gh api "repos/$GH_REPO/pulls/$PR_NUMBER/commits" --paginate \
-            --jq '.[] | "\(.author.login // "unknown") \(.committer.login // "unknown") \(.commit.verification.verified)"' \
-            | sort -u)
-          echo "Commit author / committer / verified: $IDENTITIES"
-          if [ "$IDENTITIES" != "$BOT_LOGIN web-flow true" ]; then
-            echo "::error::Auto-merge refused: every commit must be authored by $BOT_LOGIN, committed and signed by GitHub (web-flow), and verified."
-            exit 1
-          fi
-
-      - name: Approve PR
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          gh pr review "$PR_NUMBER" --approve \
-            --body "Auto-approved: automated security patch update passed CI in run $RUN_URL."
-
-      - name: Generate Dependency Bot App Token
-        id: app-token
-        uses: actions/create-github-app-token@v3
+      # Referenced as IZGateway/izg-dependency-scripts/...@v1, not ./.github/actions/...,
+      # because inside a reusable workflow a local path points at the CALLER's repository.
+      - name: Verify, approve and merge the bot's PR
+        uses: IZGateway/izg-dependency-scripts/.github/actions/auto-merge-bot-pr@v1
         with:
-          # client-id replaces the deprecated app-id input. The action accepts the App ID or
-          # the Client ID here (it falls back to the same value), so the existing secret works.
-          client-id: ${{ secrets.dependency-bot-app-id }}
-          private-key: ${{ secrets.dependency-bot-app-key }}
-
-      # --match-head-commit ensures only the commit tested above is merged.
-      - name: Merge PR
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          MERGE_METHOD: ${{ inputs.merge-method }}
-          BASE_BRANCH: ${{ inputs.base-branch }}
-        run: |
-          case "$MERGE_METHOD" in
-            merge|squash|rebase) ;;
-            *) echo "::error::merge-method must be merge, squash or rebase, not '$MERGE_METHOD'."; exit 1 ;;
-          esac
-          gh pr merge "$PR_NUMBER" "--$MERGE_METHOD" --delete-branch --match-head-commit "$HEAD_SHA"
-          echo "Merged PR #$PR_NUMBER into $BASE_BRANCH." >> "$GITHUB_STEP_SUMMARY"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          app-id: ${{ secrets.dependency-bot-app-id }}
+          app-private-key: ${{ secrets.dependency-bot-app-key }}
+          bot-login: ${{ inputs.bot-login }}
+          base-branch: ${{ inputs.base-branch }}
+          branch-prefix: ${{ inputs.branch-prefix }}
+          allowed-files: ${{ inputs.allowed-files }}
+          merge-method: ${{ inputs.merge-method }}

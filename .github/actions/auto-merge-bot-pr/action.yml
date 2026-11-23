@@ -1,0 +1,187 @@
+name: Auto-merge Bot PR
+description: >
+  Approves and merges a pull request opened by a GitHub App bot (for example
+  izg-dependency-bot), after checking that the PR really is the bot's own change. Works for
+  any ecosystem; set allowed-files to the files the bot may change.
+
+  Run it in a job that `needs:` the CI build job, on pull_request events, so it only starts
+  after the build, tests and deploy pass. Every check below fails closed (an error, no merge):
+    1. Eligibility: pull_request event, into base-branch, from this repository, opened by
+       bot-login, from a branch starting with branch-prefix.
+    2. Provenance: the repository activity log shows only bot-login ever wrote to the
+       branch, it was never force-pushed, and its last write is the tested head commit.
+       Commit metadata can be faked; the activity log records the authenticated actor.
+    3. Content: every changed path matches allowed-files, and every commit is authored by
+       bot-login and committed and signed by GitHub (web-flow), with a verified signature.
+       open-signed-pr creates commits that meet this.
+  Then github-actions[bot] (github-token) approves, and the bot (App token) merges with
+  --match-head-commit, so only the tested commit lands and the merge starts CI on the base
+  branch (pushes made with GITHUB_TOKEN start no workflows).
+
+  Needs the repository setting "Allow GitHub Actions to create and approve pull requests".
+  The calling job needs "contents: read" and "pull-requests: write".
+
+  WHY CREDENTIALS ARE INPUTS: composite actions cannot read the secrets context, so the
+  caller passes secrets.GITHUB_TOKEN and the App's id and private key.
+
+inputs:
+  github-token:
+    description: Token for reads and the approval. Pass secrets.GITHUB_TOKEN.
+    required: true
+  app-id:
+    description: The bot App's ID or Client ID (used to create the merge token).
+    required: true
+  app-private-key:
+    description: The bot App's private key.
+    required: true
+  bot-login:
+    required: false
+    default: izg-dependency-bot[bot]
+  base-branch:
+    required: false
+    default: develop
+  branch-prefix:
+    required: false
+    default: security-updates/nightly-
+  allowed-files:
+    description: Extended regex every changed path must match, for example '(^|/)pom\.xml$' or '^package(-lock)?\.json$'.
+    required: false
+    default: '(^|/)pom\.xml$'
+  merge-method:
+    description: merge, squash or rebase.
+    required: false
+    default: merge
+
+runs:
+  using: composite
+  steps:
+    - name: Check the PR is eligible
+      shell: bash
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        PR_BASE: ${{ github.event.pull_request.base.ref }}
+        PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        REPO: ${{ github.repository }}
+        BASE_BRANCH: ${{ inputs.base-branch }}
+        BOT_LOGIN: ${{ inputs.bot-login }}
+        BRANCH_PREFIX: ${{ inputs.branch-prefix }}
+      run: |
+        refuse() { echo "::error::Auto-merge refused: $1"; exit 1; }
+        [ "$EVENT_NAME" = "pull_request" ] || refuse "event is $EVENT_NAME, not pull_request."
+        [ "$PR_BASE" = "$BASE_BRANCH" ] || refuse "PR is into $PR_BASE, not $BASE_BRANCH."
+        [ "$PR_HEAD_REPO" = "$REPO" ] || refuse "PR comes from $PR_HEAD_REPO, not $REPO."
+        [ "$PR_AUTHOR" = "$BOT_LOGIN" ] || refuse "PR was opened by $PR_AUTHOR, not $BOT_LOGIN."
+        case "$PR_HEAD_REF" in
+          "$BRANCH_PREFIX"*) ;;
+          *) refuse "branch $PR_HEAD_REF does not start with $BRANCH_PREFIX." ;;
+        esac
+        echo "Eligible: $BOT_LOGIN PR from $PR_HEAD_REF into $PR_BASE."
+
+    - name: Verify only the bot wrote to the PR branch
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        GH_REPO: ${{ github.repository }}
+        HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        BOT_LOGIN: ${{ inputs.bot-login }}
+      run: |
+        set -euo pipefail
+        ACTIVITY=$(gh api -X GET "repos/$GH_REPO/activity" --paginate \
+          -f ref="refs/heads/$HEAD_REF" -f direction=asc -f per_page=100 \
+          --jq '.[] | "\(.actor.login // "unknown") \(.activity_type) \(.after)"')
+        echo "Branch activity (actor type after):"
+        echo "${ACTIVITY:-<none>}"
+        if [ -z "$ACTIVITY" ]; then
+          echo "::error::Auto-merge refused: no activity recorded for $HEAD_REF, so its provenance cannot be verified."
+          exit 1
+        fi
+        ACTORS=$(printf '%s\n' "$ACTIVITY" | awk '{print $1}' | sort -u)
+        if [ "$ACTORS" != "$BOT_LOGIN" ]; then
+          echo "::error::Auto-merge refused: $HEAD_REF was written by actor(s) other than $BOT_LOGIN: $(echo "$ACTORS" | xargs)"
+          exit 1
+        fi
+        if printf '%s\n' "$ACTIVITY" | awk '{print $2}' | grep -qx force_push; then
+          echo "::error::Auto-merge refused: $HEAD_REF has been force-pushed."
+          exit 1
+        fi
+        LAST_AFTER=$(printf '%s\n' "$ACTIVITY" | tail -1 | awk '{print $3}')
+        if [ "$LAST_AFTER" != "$HEAD_SHA" ]; then
+          echo "::error::Auto-merge refused: last recorded write to $HEAD_REF is $LAST_AFTER, not the tested head $HEAD_SHA."
+          exit 1
+        fi
+        echo "Provenance OK: every write to $HEAD_REF was made by $BOT_LOGIN."
+
+    # GitHub records its own signing account, web-flow, as the COMMITTER of commits it
+    # creates and signs through the Git Data API, never the bot. web-flow alone does not
+    # prove who made the commit; the activity-log check above does.
+    - name: Verify PR only contains bot-authored, allowed changes
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        GH_REPO: ${{ github.repository }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        BOT_LOGIN: ${{ inputs.bot-login }}
+        ALLOWED_FILES: ${{ inputs.allowed-files }}
+      run: |
+        set -euo pipefail
+        FILES=$(gh api "repos/$GH_REPO/pulls/$PR_NUMBER/files" --paginate --jq '.[].filename' | sort -u)
+        echo "Changed files:"
+        echo "${FILES:-<none>}"
+        if [ -z "$FILES" ]; then
+          echo "::error::Auto-merge refused: the PR changes no files."
+          exit 1
+        fi
+        DISALLOWED=$(printf '%s\n' "$FILES" | grep -Ev -- "$ALLOWED_FILES" || true)
+        if [ -n "$DISALLOWED" ]; then
+          echo "::error::Auto-merge refused: the PR changes files not matching '$ALLOWED_FILES': $(echo "$DISALLOWED" | xargs)"
+          exit 1
+        fi
+        # One line per distinct "author committer verified" combination across all commits.
+        IDENTITIES=$(gh api "repos/$GH_REPO/pulls/$PR_NUMBER/commits" --paginate \
+          --jq '.[] | "\(.author.login // "unknown") \(.committer.login // "unknown") \(.commit.verification.verified)"' \
+          | sort -u)
+        echo "Commit author / committer / verified: $IDENTITIES"
+        if [ "$IDENTITIES" != "$BOT_LOGIN web-flow true" ]; then
+          echo "::error::Auto-merge refused: every commit must be authored by $BOT_LOGIN, committed and signed by GitHub (web-flow), and verified."
+          exit 1
+        fi
+
+    - name: Approve PR
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        GH_REPO: ${{ github.repository }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: |
+        gh pr review "$PR_NUMBER" --approve \
+          --body "Auto-approved: automated security patch update passed CI in run $RUN_URL."
+
+    - name: Generate bot App token
+      id: app-token
+      uses: actions/create-github-app-token@v3
+      with:
+        # client-id replaces the deprecated app-id input. The action accepts the App ID or
+        # the Client ID here (it falls back to the same value).
+        client-id: ${{ inputs.app-id }}
+        private-key: ${{ inputs.app-private-key }}
+
+    - name: Merge PR
+      shell: bash
+      env:
+        GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        GH_REPO: ${{ github.repository }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        MERGE_METHOD: ${{ inputs.merge-method }}
+        BASE_BRANCH: ${{ inputs.base-branch }}
+      run: |
+        case "$MERGE_METHOD" in
+          merge|squash|rebase) ;;
+          *) echo "::error::merge-method must be merge, squash or rebase, not '$MERGE_METHOD'."; exit 1 ;;
+        esac
+        gh pr merge "$PR_NUMBER" "--$MERGE_METHOD" --delete-branch --match-head-commit "$HEAD_SHA"
+        echo "Merged PR #$PR_NUMBER into $BASE_BRANCH." >> "$GITHUB_STEP_SUMMARY"

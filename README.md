@@ -471,6 +471,38 @@ merges with `--match-head-commit`, so only the tested commit lands and the merge
 
 ---
 
+### Building-block actions for bot PRs
+
+The two workflows above are short recipes built from these composite actions. Use the
+workflows when they fit; use the actions directly to build a different flow (for example an
+npm security-update workflow). Composite actions cannot read `secrets.*`, so tokens and keys
+are inputs.
+
+Inside a reusable workflow, `uses: ./.github/actions/...` points at the **caller's**
+repository, so the workflows reference these actions as
+`IZGateway/izg-dependency-scripts/.github/actions/<name>@v1`. To test a branch of this
+repository end to end, point those refs at the branch temporarily.
+
+| Action | Ecosystem | What it does | Key inputs |
+|---|---|---|---|
+| `setup-izg-maven` | Maven | JDK + Maven + `~/.m2/settings.xml` with GitHub Packages credentials. Can replace the hand-written `settings.xml` in any IZ Gateway Maven workflow. Run after checkout. | `github-token`, `maven-servers`, `java-version`, `maven-version` |
+| `maven-patch-updates` | Maven | Applies patch updates (skipping the exclusions file), runs a quick verify, writes the PR description. Changes files only; does not commit. Output `has-changes`. | `exclusions-file`, `verify-command`, `auto-merge`, `ci-description` |
+| `open-signed-pr` | Any | Commits every modified tracked file as a **GitHub-signed** commit through the Git Data API, opens the PR from `<prefix>/nightly-*` or `<prefix>/manual-*`, and closes older nightly PRs. Outputs `pr-url`, `branch`, `head-sha`. | `token` (App token), `base-branch`, `auto-merge`, `branch-prefix`, `body-file`, `labels` |
+| `rerun-cancelled-build` | Any | Waits for the PR's CI run and re-runs it if it was cancelled while queued (concurrency groups keep one pending run). Set `timeout-minutes` on the job. | `github-token`, `ci-workflow`, `branch`, `head-sha`, `max-reruns` |
+| `auto-merge-bot-pr` | Any | Eligibility, provenance and content checks (fail closed), then approves as `github-actions[bot]` and merges as the bot with `--match-head-commit`. Run in a job that `needs:` the build. | `github-token`, `app-id`, `app-private-key`, `bot-login`, `base-branch`, `branch-prefix`, `allowed-files`, `merge-method` |
+
+Example, replacing a hand-written `settings.xml` step in a Maven workflow:
+
+```yaml
+    - uses: actions/checkout@v7
+    - uses: IZGateway/izg-dependency-scripts/.github/actions/setup-izg-maven@v1
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        maven-servers: github-bom github-core
+```
+
+---
+
 ## 🔧 Commands
 
 ### `fix-vulnerabilities`

@@ -1,0 +1,93 @@
+name: Re-run Cancelled Build
+description: >
+  Waits for a CI workflow run on a branch and head commit, and re-runs it if it completes as
+  cancelled while the branch's PR is still open. Works for any ecosystem.
+
+  Why: a CI workflow with a `concurrency:` group keeps only ONE pending run per group. When
+  another run queues behind a pending one, GitHub cancels the older pending run. For a bot PR
+  that would silently drop the update (its auto-merge job never runs). This action notices
+  and re-runs the build.
+
+  It stops when the run completes with any other conclusion, when the PR is no longer open,
+  or after max-reruns re-runs (then it fails). It polls, so set timeout-minutes on the
+  calling job. The calling job needs "actions: write" and "pull-requests: read".
+
+inputs:
+  github-token:
+    description: Token that can list and re-run workflow runs. Pass secrets.GITHUB_TOKEN.
+    required: true
+  ci-workflow:
+    description: File name of the CI workflow that builds the PR, for example maven.yml.
+    required: false
+    default: maven.yml
+  branch:
+    description: PR head branch.
+    required: true
+  head-sha:
+    description: PR head commit the CI run must belong to.
+    required: true
+  max-reruns:
+    required: false
+    default: "3"
+
+outputs:
+  conclusion:
+    description: Final conclusion of the CI run (success, failure, ...), empty if the PR closed first.
+    value: ${{ steps.watch.outputs.conclusion }}
+
+runs:
+  using: composite
+  steps:
+    - name: Watch the build and re-run it if cancelled
+      id: watch
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        GH_REPO: ${{ github.repository }}
+        CI_WORKFLOW: ${{ inputs.ci-workflow }}
+        BRANCH: ${{ inputs.branch }}
+        HEAD_SHA: ${{ inputs.head-sha }}
+        MAX_RERUNS: ${{ inputs.max-reruns }}
+      run: |
+        set -euo pipefail
+        RERUNS=0
+        RUN_ID=""
+        while true; do
+          if [ -z "$RUN_ID" ]; then
+            RUN_ID=$(gh run list --workflow "$CI_WORKFLOW" --event pull_request --branch "$BRANCH" \
+              --commit "$HEAD_SHA" --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+            if [ -z "$RUN_ID" ]; then
+              echo "No $CI_WORKFLOW run registered for $BRANCH yet; waiting."
+              sleep 30
+              continue
+            fi
+            echo "Watching $CI_WORKFLOW run $RUN_ID"
+          fi
+
+          read -r STATUS CONCLUSION < <(gh run view "$RUN_ID" --json status,conclusion \
+            --jq '"\(.status) \(.conclusion // "none")"')
+          if [ "$STATUS" != "completed" ]; then
+            sleep 60
+            continue
+          fi
+
+          if [ "$CONCLUSION" != "cancelled" ]; then
+            echo "$CI_WORKFLOW run $RUN_ID finished: $CONCLUSION"
+            echo "conclusion=$CONCLUSION" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          STATE=$(gh pr view "$BRANCH" --json state --jq .state)
+          if [ "$STATE" != "OPEN" ]; then
+            echo "PR for $BRANCH is $STATE; not re-running."
+            exit 0
+          fi
+          if [ "$RERUNS" -ge "$MAX_RERUNS" ]; then
+            echo "::error::$CI_WORKFLOW run $RUN_ID was cancelled $((RERUNS + 1)) times; giving up. Re-run it by hand."
+            exit 1
+          fi
+          RERUNS=$((RERUNS + 1))
+          echo "::warning::$CI_WORKFLOW run $RUN_ID was cancelled (likely displaced in its concurrency queue). Re-run $RERUNS of $MAX_RERUNS."
+          gh run rerun "$RUN_ID"
+          sleep 30
+        done
