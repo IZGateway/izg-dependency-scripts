@@ -113,7 +113,7 @@ When creating a ticket, the action SHALL set these fields from inputs:
 | `board-id` | `27` | board used for the active-sprint lookup |
 | `ai-use` | `NA` | the "AI Use" dropdown, which IGDD requires before a Bug can be closed |
 
-An empty optional input SHALL leave that field out of the request. `sprint` SHALL accept only `none` or `active`; any other value SHALL fail the action before any Jira call.
+When `priority`, `assignee-account-id`, `epic-key` or `ai-use` is empty, the action SHALL leave that field out of the request. An empty `components` SHALL fall back to the `component` input, and the repeat-detection label SHALL always be sent, even when `labels` is empty. `sprint` SHALL accept only `none` or `active`; any other value SHALL fail the action before any Jira call.
 
 #### Scenario: Defaults
 - **WHEN** a caller passes only the required inputs with `component: Configuration Console`
