@@ -149,7 +149,9 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@v3
         with:
-          app-id: ${{ secrets.dependency-bot-app-id }}
+          # client-id replaces the deprecated app-id input. The action accepts the App ID or
+          # the Client ID here (it falls back to the same value), so the existing secret works.
+          client-id: ${{ secrets.dependency-bot-app-id }}
           private-key: ${{ secrets.dependency-bot-app-key }}
 
       # --match-head-commit ensures only the commit tested above is merged.
