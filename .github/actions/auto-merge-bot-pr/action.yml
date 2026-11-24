@@ -134,7 +134,14 @@ runs:
           echo "::error::Auto-merge refused: the PR changes no files."
           exit 1
         fi
-        DISALLOWED=$(printf '%s\n' "$FILES" | grep -Ev -- "$ALLOWED_FILES" || true)
+        # grep exits 0 (some file does not match), 1 (every file matches) or 2 (error, such as an
+        # invalid regular expression). Only 0 and 1 are valid results; anything else refuses the merge.
+        RC=0
+        DISALLOWED=$(printf '%s\n' "$FILES" | grep -Ev -- "$ALLOWED_FILES") || RC=$?
+        if [ "$RC" -gt 1 ]; then
+          echo "::error::Auto-merge refused: allowed-files is not a valid regular expression ('$ALLOWED_FILES', grep exit $RC)."
+          exit 1
+        fi
         if [ -n "$DISALLOWED" ]; then
           echo "::error::Auto-merge refused: the PR changes files not matching '$ALLOWED_FILES': $(echo "$DISALLOWED" | xargs)"
           exit 1
@@ -149,6 +156,17 @@ runs:
           exit 1
         fi
 
+    # Generate the App token before approving, so a token failure cannot leave an approved PR
+    # that was never merged.
+    - name: Generate bot App token
+      id: app-token
+      uses: actions/create-github-app-token@v3
+      with:
+        # client-id replaces the deprecated app-id input. The action accepts the App ID or
+        # the Client ID here (it falls back to the same value).
+        client-id: ${{ inputs.app-id }}
+        private-key: ${{ inputs.app-private-key }}
+
     - name: Approve PR
       shell: bash
       env:
@@ -159,15 +177,6 @@ runs:
       run: |
         gh pr review "$PR_NUMBER" --approve \
           --body "Auto-approved: automated security patch update passed CI in run $RUN_URL."
-
-    - name: Generate bot App token
-      id: app-token
-      uses: actions/create-github-app-token@v3
-      with:
-        # client-id replaces the deprecated app-id input. The action accepts the App ID or
-        # the Client ID here (it falls back to the same value).
-        client-id: ${{ inputs.app-id }}
-        private-key: ${{ inputs.app-private-key }}
 
     - name: Merge PR
       shell: bash

@@ -118,6 +118,7 @@ jobs:
         with:
           ref: ${{ inputs.base-branch }}
           token: ${{ steps.app-token.outputs.token }}
+          persist-credentials: false
 
       - name: Set up Java, Maven and GitHub Packages access
         uses: IZGateway/izg-dependency-scripts/.github/actions/setup-izg-maven@v1

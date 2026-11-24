@@ -103,18 +103,13 @@ runs:
         BODY_FILE: ${{ inputs.body-file }}
         RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       run: |
-        # One row per changed <name>value</name> element across all changed poms: old -> new.
-        TABLE=$(git diff -U0 --no-color | python3 -c '
-        import re, sys
-        old, new = {}, {}
-        for line in sys.stdin:
-            m = re.match(r"([-+])\s*<([\w.-]+)>([^<]+)</\2>", line)
-            if m:
-                (old if m.group(1) == "-" else new)[m.group(2)] = m.group(3)
-        for k in new:
-            code = lambda v: "\x60%s\x60" % v   # \x60 is a backtick (Markdown code span)
-            print("| %s | %s | %s |" % (code(k), code(old.get(k, "?")), code(new[k])))
-        ')
+        # One row per change the versions plugin logged in apply-updates.log, old -> new:
+        #   [INFO] Updated ${jacoco.version} from 0.8.13 to 0.8.16
+        #   [INFO] Updated org.foo:bar:jar:1.2.3 to version 1.2.4 in my:project:1.0
+        TABLE=$(sed -n \
+          -e 's/^\[INFO\] Updated \(\${[^}]*}\) from \([^ ]*\) to \([^ ]*\)$/| `\1` | `\2` | `\3` |/p' \
+          -e 's/^\[INFO\] Updated \([^: ]*:[^: ]*\):[^ ]*:\([^: ]*\) to version \([^ ]*\) in .*$/| `\1` | `\2` | `\3` |/p' \
+          apply-updates.log | awk '!seen[$0]++')
 
         if [ "$AUTO_MERGE" = "true" ]; then
           MERGE_NOTE="**Auto-merge:** yes. This PR is approved and merged automatically once $CI_DESCRIPTION passes."
@@ -132,7 +127,7 @@ runs:
           echo ""
           echo "### Version changes"
           echo ""
-          echo "| Property | Old | New |"
+          echo "| Dependency or property | Old | New |"
           echo "|----------|-----|-----|"
           echo "$TABLE"
           echo ""
