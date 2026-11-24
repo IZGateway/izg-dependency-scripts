@@ -11,7 +11,7 @@ Two distinct products live here:
 2. **Shared GitHub Actions** — Reusable CI/CD building blocks for IZGateway projects:
    - `.github/actions/cve-scan/` — OWASP Dependency Check composite action (in use today)
    - `.github/actions/report-ci-failure/` — creates (or comments on) an IGDD Jira ticket
-     through the Jira REST API when a CI job fails (see `openspec/changes/report-ci-failure-action/`)
+     through the Jira REST API when a CI job fails (spec: `openspec/specs/ci-failure-report/`)
    - `.github/workflows/ecr-scan-report.yml` — AWS Inspector2 ECR scan reusable workflow
      *(in progress — see `openspec/changes/cve-scan-action/`)*
 
