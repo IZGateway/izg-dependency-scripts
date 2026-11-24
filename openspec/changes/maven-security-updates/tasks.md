@@ -1,3 +1,25 @@
+---
+schema_version: '1.0'
+updated:
+  - date: '2026-11-24T07:24:20.420Z'
+    user: boonek
+    agent:
+      name: Claude Code
+      version: unknown
+    llm:
+      name: claude-sonnet-5-5
+      version: '5.5'
+    prompt_uri: >-
+      prompt:/claude-code/2d850d87-39bd-4ea9-920a-3292fff9e4f9/~ed2d7a81-a3cf-4782-87dc-dedfc6b351ba
+    summary: >-
+      Record in tasks.md that task 3.4 is deferred to the first caller, per the
+      PR #13 review decision on finding 2.
+ticket: IGDD-2766
+change_request: maven-security-updates
+created:
+  date: '2026-11-23T01:59:20.000Z'
+  user: Palak Patel
+---
 ## 1. Shared workflows
 
 - [x] 1.1 Create `.github/workflows/maven-security-updates.yml` (`workflow_call`) from the tested izgw-transform workflow, with repository-specific values as inputs (design D1, D6, D8)
@@ -27,7 +49,7 @@
 - [x] 3.1 Replace izgw-transform `security-updates.yml` with a thin caller pointing at `@IGDD-2766`
 - [x] 3.2 Replace the auto-merge job in izgw-transform `maven.yml` with a `uses:` job pointing at `@IGDD-2766`
 - [x] 3.3 Pre-merge test of the workflows BEFORE the composite-action restructure (section 1b): bot PR opened with a verified commit, CI passes, provenance and content checks pass, approved and merged; then reverted (passed 2026-11-23: izgw-transform PR #301, approved by github-actions and merged by izg-dependency-bot)
-- [ ] 3.4 Re-test after the restructure. Temporarily point the action refs in both workflows at `@IGDD-2766`, and the izgw-transform callers at `@IGDD-2766`; run the same pre-merge test; then revert both
+- [ ] 3.4 Re-test after the restructure. Temporarily point the action refs in both workflows at `@IGDD-2766`, and the izgw-transform callers at `@IGDD-2766`; run the same pre-merge test; then revert both. **Deferred (2026-11-24, PR #13 review):** not run before merge. The composite actions are a shared library and the first caller (izgw-transform) is their functional test, so the same check runs against the merged `@v1` as part of 3.5
 - [ ] 3.5 Merge this change with label `bump:minor`, confirm the `v1` tag moved (izgw-transform callers already point at `@v1`), and re-run izgw-transform PR #294's build
 
 ## 4. Follow-ups (not in this change)
