@@ -1,0 +1,179 @@
+name: Maven Security Updates
+
+# Reusable workflow (workflow_call). Applies PATCH releases to the dependency and plugin
+# versions a Maven project sets itself, then opens a pull request as izg-dependency-bot.
+# Versions managed upstream (izgw-bom and anything listed in the caller's exclusions file)
+# are never changed.
+#
+# The PR is built and tested by the caller's CI workflow like any other PR. When
+# auto-merge is true, the PR branch is named <branch-prefix>/nightly-*, and the shared
+# auto-merge-security-update.yml workflow (called from the caller's CI) approves and merges
+# it once that build passes. Otherwise the branch is <branch-prefix>/manual-* and the PR
+# waits for a human review.
+#
+# The steps are the shared composite actions in .github/actions/ (setup-izg-maven,
+# maven-patch-updates, open-signed-pr, rerun-cancelled-build). They are referenced as
+# IZGateway/izg-dependency-scripts/...@v1, not ./.github/actions/..., because inside a
+# reusable workflow a local path points at the CALLER's repository. To test a branch of this
+# repository, point those refs at the branch temporarily.
+#
+# Caller requirements (see README "maven-security-updates"):
+#   - automation-exclusions.txt (or exclusions-file): groupId:artifactId patterns to skip
+#   - pom.xml: versions-maven-plugin configured for patch-only updates, and versions held in
+#     properties so versions:update-properties can change them
+#   - the izg-dependency-bot GitHub App installed on the repository, and its credentials
+#     passed as the dependency-bot-app-id / dependency-bot-app-key secrets
+#   - caller permissions: contents: read, packages: read, actions: write, pull-requests: read
+
+on:
+  workflow_call:
+    inputs:
+      base-branch:
+        description: Branch to update and to open the PR against.
+        type: string
+        default: develop
+      auto-merge:
+        description: >
+          true names the branch <branch-prefix>/nightly-* so the shared auto-merge workflow
+          may merge it after CI passes. false names it <branch-prefix>/manual-* (review only).
+        type: boolean
+        default: false
+      maven-servers:
+        description: >
+          Space- or newline-separated Maven server ids (from the pom's <repositories>) that
+          resolve from GitHub Packages. Each gets GITHUB_TOKEN credentials in settings.xml.
+        type: string
+        default: github-bom
+      java-version:
+        type: string
+        default: "21"
+      maven-version:
+        type: string
+        default: "3.9.0"
+      exclusions-file:
+        description: File of groupId:artifactId patterns that are never updated.
+        type: string
+        default: automation-exclusions.txt
+      verify-command:
+        description: Quick check run before opening the PR. The full build runs on the PR.
+        type: string
+        default: mvn -B -ntp test-compile -DskipDependencyCheck=true
+      ci-workflow:
+        description: File name of the caller's CI workflow that builds PRs (watched for cancellation).
+        type: string
+        default: maven.yml
+      ci-description:
+        description: What the caller's CI checks, used in the PR description.
+        type: string
+        default: the CI build
+      branch-prefix:
+        type: string
+        default: security-updates
+      pr-labels:
+        description: Comma-separated labels for the PR. Each must already exist.
+        type: string
+        default: dependencies
+      max-build-reruns:
+        description: How many times to re-run the PR's CI build if it is cancelled while queued.
+        type: number
+        default: 3
+    secrets:
+      dependency-bot-app-id:
+        required: true
+      dependency-bot-app-key:
+        required: true
+    outputs:
+      pr-url:
+        description: URL of the PR opened, or empty when there were no updates.
+        value: ${{ jobs.security-updates.outputs.pr-url }}
+      branch:
+        description: PR branch name, or empty when there were no updates.
+        value: ${{ jobs.security-updates.outputs.branch }}
+
+jobs:
+  security-updates:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    outputs:
+      pr-url: ${{ steps.open-pr.outputs.pr-url }}
+      branch: ${{ steps.open-pr.outputs.branch }}
+      head-sha: ${{ steps.open-pr.outputs.head-sha }}
+    steps:
+      # All writes (blobs, commit, branch, PR, closing superseded PRs) use the
+      # izg-dependency-bot App token. Events raised with GITHUB_TOKEN start no workflows, so a
+      # PR opened with it would never run the caller's CI. GITHUB_TOKEN only reads packages.
+      - name: Generate Dependency Bot App Token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          # client-id replaces the deprecated app-id input. The action accepts the App ID or
+          # the Client ID here (it falls back to the same value), so the existing secret works.
+          client-id: ${{ secrets.dependency-bot-app-id }}
+          private-key: ${{ secrets.dependency-bot-app-key }}
+
+      - name: Checkout ${{ inputs.base-branch }}
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.base-branch }}
+          token: ${{ steps.app-token.outputs.token }}
+          persist-credentials: false
+
+      - name: Set up Java, Maven and GitHub Packages access
+        uses: IZGateway/izg-dependency-scripts/.github/actions/setup-izg-maven@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          maven-servers: ${{ inputs.maven-servers }}
+          java-version: ${{ inputs.java-version }}
+          maven-version: ${{ inputs.maven-version }}
+
+      - name: Apply patch updates
+        id: patch
+        uses: IZGateway/izg-dependency-scripts/.github/actions/maven-patch-updates@v1
+        with:
+          exclusions-file: ${{ inputs.exclusions-file }}
+          verify-command: ${{ inputs.verify-command }}
+          auto-merge: ${{ inputs.auto-merge }}
+          ci-description: ${{ inputs.ci-description }}
+
+      - name: Open pull request
+        id: open-pr
+        if: steps.patch.outputs.has-changes == 'true'
+        uses: IZGateway/izg-dependency-scripts/.github/actions/open-signed-pr@v1
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          base-branch: ${{ inputs.base-branch }}
+          auto-merge: ${{ inputs.auto-merge }}
+          branch-prefix: ${{ inputs.branch-prefix }}
+          body-file: ${{ steps.patch.outputs.body-file }}
+          labels: ${{ inputs.pr-labels }}
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: security-updates-logs
+          if-no-files-found: ignore
+          path: |
+            **/pom.xml
+            apply-updates.log
+            pr-body.md
+
+  watch-pr-build:
+    needs: security-updates
+    if: needs.security-updates.outputs.branch != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    permissions:
+      actions: write        # gh run rerun
+      pull-requests: read
+    steps:
+      - name: Re-run the PR build if it was cancelled while queued
+        uses: IZGateway/izg-dependency-scripts/.github/actions/rerun-cancelled-build@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          ci-workflow: ${{ inputs.ci-workflow }}
+          branch: ${{ needs.security-updates.outputs.branch }}
+          head-sha: ${{ needs.security-updates.outputs.head-sha }}
+          max-reruns: ${{ inputs.max-build-reruns }}

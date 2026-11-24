@@ -1,0 +1,147 @@
+name: Maven Patch Updates
+description: >
+  Applies PATCH releases to the dependency and plugin versions a Maven project sets itself
+  (versions:use-latest-versions and versions:update-properties), skipping every
+  groupId:artifactId pattern in the exclusions file. Then runs a quick verify command and
+  writes a PR description listing each changed version.
+
+  Patch-only behaviour comes from the project's versions-maven-plugin configuration
+  (allowMinorUpdates=false). POM configuration takes precedence over -D flags, so it must be
+  set in the pom, not on the command line.
+
+  Run it after actions/checkout and setup-izg-maven. It changes files in the working tree
+  only; it does not commit. Pair it with open-signed-pr to open the PR.
+
+inputs:
+  exclusions-file:
+    description: File of groupId:artifactId patterns that are never updated.
+    required: false
+    default: automation-exclusions.txt
+  verify-command:
+    description: Quick check run after the updates. The full build runs on the PR.
+    required: false
+    default: mvn -B -ntp test-compile -DskipDependencyCheck=true
+  auto-merge:
+    description: '"true" if the PR will be merged automatically; only changes the PR description.'
+    required: false
+    default: "false"
+  ci-description:
+    description: What the project's CI checks, used in the PR description.
+    required: false
+    default: the CI build
+  body-file:
+    description: Where to write the PR description.
+    required: false
+    default: pr-body.md
+
+outputs:
+  has-changes:
+    description: '"true" if any version changed, otherwise "false".'
+    value: ${{ steps.apply.outputs.has-changes }}
+  body-file:
+    description: Path of the PR description, written only when has-changes is "true".
+    value: ${{ inputs.body-file }}
+
+runs:
+  using: composite
+  steps:
+    - name: Read automation exclusions
+      id: exclusions
+      shell: bash
+      env:
+        EXCLUSIONS_FILE: ${{ inputs.exclusions-file }}
+      run: |
+        if [ ! -f "$EXCLUSIONS_FILE" ]; then
+          echo "::error::$EXCLUSIONS_FILE not found. Create it (it may list upstream artifacts such as gov.cdc.izgw:*)."
+          exit 1
+        fi
+        EXCLUDES=$(grep -v '^\s*#' "$EXCLUSIONS_FILE" | grep -v '^\s*$' | paste -sd ',' - || true)
+        echo "excludes=$EXCLUDES" >> "$GITHUB_OUTPUT"
+        echo "Excluding from automation: ${EXCLUDES:-<nothing>}"
+
+    - name: Apply patch version updates
+      id: apply
+      shell: bash
+      env:
+        EXCLUDES: ${{ steps.exclusions.outputs.excludes }}
+      run: |
+        set -o pipefail
+        # use-latest-versions: literal <version>s in dependencies / dependencyManagement.
+        # update-properties:   ${*.version} properties defined in the project (incl. plugins).
+        mvn -B -ntp versions:use-latest-versions versions:update-properties \
+          -Dexcludes="$EXCLUDES" \
+          -DprocessDependencyManagementTransitive=false \
+          2>&1 | tee apply-updates.log
+
+        if git diff --quiet; then
+          echo "has-changes=false" >> "$GITHUB_OUTPUT"
+          echo "No patch updates available."
+          {
+            echo "## No patch updates available"
+            echo ""
+            echo "All project-owned dependencies and plugins are on their latest patch release."
+          } >> "$GITHUB_STEP_SUMMARY"
+        else
+          echo "has-changes=true" >> "$GITHUB_OUTPUT"
+          git diff --stat
+        fi
+
+    - name: Verify updated build
+      if: steps.apply.outputs.has-changes == 'true'
+      shell: bash
+      env:
+        VERIFY_COMMAND: ${{ inputs.verify-command }}
+      run: bash -c "$VERIFY_COMMAND"
+
+    - name: Build PR description
+      if: steps.apply.outputs.has-changes == 'true'
+      shell: bash
+      env:
+        AUTO_MERGE: ${{ inputs.auto-merge }}
+        CI_DESCRIPTION: ${{ inputs.ci-description }}
+        EXCLUSIONS_FILE: ${{ inputs.exclusions-file }}
+        BODY_FILE: ${{ inputs.body-file }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: |
+        # One row per change the versions plugin logged in apply-updates.log, old -> new:
+        #   [INFO] Updated ${jacoco.version} from 0.8.13 to 0.8.16
+        #   [INFO] Updated org.foo:bar:jar:1.2.3 to version 1.2.4 in my:project:1.0
+        TABLE=$(sed -n \
+          -e 's/^\[INFO\] Updated \(\${[^}]*}\) from \([^ ]*\) to \([^ ]*\)$/| `\1` | `\2` | `\3` |/p' \
+          -e 's/^\[INFO\] Updated \([^: ]*:[^: ]*\):[^ ]*:\([^: ]*\) to version \([^ ]*\) in .*$/| `\1` | `\2` | `\3` |/p' \
+          apply-updates.log | awk '!seen[$0]++')
+
+        if [ "$AUTO_MERGE" = "true" ]; then
+          MERGE_NOTE="**Auto-merge:** yes. This PR is approved and merged automatically once $CI_DESCRIPTION passes."
+        else
+          MERGE_NOTE="**Auto-merge:** no. This PR came from a manual run, so it needs a human review."
+        fi
+
+        {
+          echo "## Automated patch updates"
+          echo ""
+          echo "Created by the [Security Updates workflow]($RUN_URL)."
+          echo "Only **patch** releases of dependencies and plugins owned by this project are applied."
+          echo ""
+          echo "$MERGE_NOTE"
+          echo ""
+          echo "### Version changes"
+          echo ""
+          echo "| Dependency or property | Old | New |"
+          echo "|----------|-----|-----|"
+          echo "$TABLE"
+          echo ""
+          echo "### Not updated by this workflow"
+          echo ""
+          echo "Artifacts listed in \`$EXCLUSIONS_FILE\`:"
+          echo ""
+          grep -v '^\s*#' "$EXCLUSIONS_FILE" | grep -v '^\s*$' | sed "s/.*/- \`&\`/" || true
+          echo ""
+          echo "<details><summary>Diff</summary>"
+          echo ""
+          echo '```diff'
+          git diff --no-color
+          echo '```'
+          echo "</details>"
+        } > "$BODY_FILE"
+        cat "$BODY_FILE" >> "$GITHUB_STEP_SUMMARY"

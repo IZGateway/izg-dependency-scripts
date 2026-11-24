@@ -1,0 +1,85 @@
+name: Auto-merge Security Update
+
+# Reusable workflow (workflow_call). Approves and merges a security-update PR opened by
+# izg-dependency-bot, after the caller's CI build has passed.
+#
+# Call it from the caller's CI workflow as a job that `needs:` the build job, on
+# pull_request events. GitHub only starts the job after the build succeeds, so "the build,
+# tests and deploy passed" is guaranteed by the caller's `needs:`. This workflow then checks
+# that the PR really is the bot's own update before it approves and merges:
+#   1. the job only runs for PRs into base-branch, from this repository, opened by
+#      bot-login, on a <branch-prefix>* branch
+#   2. provenance: the repository activity log shows that only bot-login ever wrote to the
+#      PR branch, it was never force-pushed, and its last write is the tested head commit
+#   3. content: every changed file matches allowed-files, and every commit is authored by
+#      bot-login and committed and signed by GitHub (web-flow), with a verified signature
+# Any check that cannot be confirmed refuses the merge (fails closed).
+#
+# The approval comes from github-actions[bot] (GITHUB_TOKEN), a different identity from the
+# PR author. This needs the repository setting "Allow GitHub Actions to create and approve
+# pull requests". The merge uses the izg-dependency-bot App token so that the push to
+# base-branch starts the caller's CI (pushes made with GITHUB_TOKEN start no workflows).
+#
+# Caller permissions: contents: read, pull-requests: write.
+#
+# Works for any ecosystem: set allowed-files to the files the update may touch, for example
+# '(^|/)pom\.xml$' for Maven or '^package(-lock)?\.json$' for npm.
+
+on:
+  workflow_call:
+    inputs:
+      base-branch:
+        description: Only PRs into this branch are merged.
+        type: string
+        default: develop
+      bot-login:
+        description: Login of the GitHub App bot that opens security-update PRs.
+        type: string
+        default: izg-dependency-bot[bot]
+      branch-prefix:
+        description: Only PRs from branches starting with this prefix are merged.
+        type: string
+        default: security-updates/nightly-
+      allowed-files:
+        description: Extended regex that every changed file path must match.
+        type: string
+        default: '(^|/)pom\.xml$'
+      merge-method:
+        description: merge, squash or rebase.
+        type: string
+        default: merge
+    secrets:
+      dependency-bot-app-id:
+        required: true
+      dependency-bot-app-key:
+        required: true
+
+jobs:
+  # The job-level `if:` skips every PR that is not the bot's nightly update, so other PRs show
+  # a skipped job instead of a failure. auto-merge-bot-pr repeats these checks (fail closed)
+  # and then checks provenance and content before it approves and merges.
+  auto-merge:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.base.ref == inputs.base-branch &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login == inputs.bot-login &&
+      startsWith(github.event.pull_request.head.ref, inputs.branch-prefix)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      # Referenced as IZGateway/izg-dependency-scripts/...@v1, not ./.github/actions/...,
+      # because inside a reusable workflow a local path points at the CALLER's repository.
+      - name: Verify, approve and merge the bot's PR
+        uses: IZGateway/izg-dependency-scripts/.github/actions/auto-merge-bot-pr@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          app-id: ${{ secrets.dependency-bot-app-id }}
+          app-private-key: ${{ secrets.dependency-bot-app-key }}
+          bot-login: ${{ inputs.bot-login }}
+          base-branch: ${{ inputs.base-branch }}
+          branch-prefix: ${{ inputs.branch-prefix }}
+          allowed-files: ${{ inputs.allowed-files }}
+          merge-method: ${{ inputs.merge-method }}

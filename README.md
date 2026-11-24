@@ -346,6 +346,163 @@ lag a new ticket), to check that the second run becomes a comment on the first t
 
 ---
 
+### `maven-security-updates` — Nightly patch updates for Maven projects
+
+**Path:** `.github/workflows/maven-security-updates.yml` (reusable workflow)
+
+Applies **patch** releases to the dependency and plugin versions a Maven project sets itself,
+then opens a PR as `izg-dependency-bot`. Versions managed upstream (by `izgw-bom`) and anything
+in the caller's exclusions file are never changed. The bot's commit is created through the
+GitHub API, so GitHub signs it and it shows as **Verified**.
+
+- `auto-merge: true` names the branch `security-updates/nightly-*`. The
+  `auto-merge-security-update` workflow below merges it once CI passes. An older open nightly
+  PR is closed as superseded.
+- `auto-merge: false` names it `security-updates/manual-*`; it waits for a human review.
+- A second job watches the PR's CI run and re-runs it (up to `max-build-reruns` times) if it is
+  cancelled while queued, which happens when the CI workflow has a `concurrency:` group.
+
+#### Inputs
+
+| Input | Default | Description |
+|---|---|---|
+| `base-branch` | `develop` | Branch to update and open the PR against |
+| `auto-merge` | `false` | `true` for nightly runs that may be merged automatically |
+| `maven-servers` | `github-bom` | Space-separated server ids from the pom's `<repositories>` that resolve from GitHub Packages |
+| `java-version` | `21` | |
+| `maven-version` | `3.9.0` | |
+| `exclusions-file` | `automation-exclusions.txt` | `groupId:artifactId` patterns that are never updated |
+| `verify-command` | `mvn -B -ntp test-compile -DskipDependencyCheck=true` | Quick check before the PR is opened |
+| `ci-workflow` | `maven.yml` | CI workflow file that builds PRs (watched for cancellation) |
+| `ci-description` | `the CI build` | What CI checks, shown in the PR description |
+| `branch-prefix` | `security-updates` | |
+| `pr-labels` | `dependencies` | Comma-separated; each label must exist |
+| `max-build-reruns` | `3` | |
+
+Secrets `dependency-bot-app-id` and `dependency-bot-app-key` are required (org secrets
+`DEPENDENCY_BOT_APP_ID` / `DEPENDENCY_BOT_APP_KEY`). Outputs: `pr-url`, `branch`.
+
+#### What the calling repository needs
+
+- The `izg-dependency-bot` GitHub App installed on the repository.
+- `automation-exclusions.txt` listing what must never be bumped, for example `gov.cdc.izgw:*`
+  and the BouncyCastle FIPS jars.
+- In `pom.xml`, versions it owns held in properties (`versions:update-properties` only changes
+  properties), and a `versions-maven-plugin` override setting `allowMinorUpdates=false`.
+  `izgw-bom` sets `allowMinorUpdates=true`, and POM configuration beats `-D` flags, so without
+  the override minor releases are applied too. `izgw-bom` also points `rulesUri` at
+  `versions-rules.xml` in the project root, so that file must exist.
+
+#### Usage
+
+```yaml
+# .github/workflows/security-updates.yml
+name: Security Updates
+on:
+  schedule:
+    - cron: "0 8 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      auto_merge:
+        description: "Auto-merge the PR like a nightly run"
+        type: boolean
+        default: false
+permissions:
+  contents: read
+  packages: read
+  actions: write        # re-run a cancelled PR build
+  pull-requests: read
+concurrency:
+  group: security-updates
+jobs:
+  security-updates:
+    uses: IZGateway/izg-dependency-scripts/.github/workflows/maven-security-updates.yml@v1
+    with:
+      auto-merge: ${{ github.event_name == 'schedule' || inputs.auto_merge == true }}
+      maven-servers: github-bom github-core
+    secrets:
+      dependency-bot-app-id: ${{ secrets.DEPENDENCY_BOT_APP_ID }}
+      dependency-bot-app-key: ${{ secrets.DEPENDENCY_BOT_APP_KEY }}
+```
+
+---
+
+### `auto-merge-security-update` — Approve and merge the bot's update PR after CI passes
+
+**Path:** `.github/workflows/auto-merge-security-update.yml` (reusable workflow)
+
+Call it from the CI workflow as a job that `needs:` the build, so it only starts after the
+build, tests and deploy pass. It works for any ecosystem; set `allowed-files` to the files an
+update may change. Before it approves and merges, it checks:
+
+1. The PR is into `base-branch`, from this repository, opened by `bot-login`, on a
+   `branch-prefix*` branch. Any other PR is skipped.
+2. **Provenance:** the repository activity log shows that only `bot-login` ever wrote to the
+   branch, it was never force-pushed, and its last write is the tested head commit.
+3. **Content:** every changed file matches `allowed-files`, and every commit is authored by
+   `bot-login` and committed and signed by GitHub (`web-flow`), with a verified signature.
+
+Any check it cannot confirm refuses the merge. `github-actions[bot]` approves (repository
+setting "Allow GitHub Actions to create and approve pull requests" must be on), and the bot
+merges with `--match-head-commit`, so only the tested commit lands and the merge starts CI on
+`base-branch`.
+
+| Input | Default | Description |
+|---|---|---|
+| `base-branch` | `develop` | |
+| `bot-login` | `izg-dependency-bot[bot]` | |
+| `branch-prefix` | `security-updates/nightly-` | |
+| `allowed-files` | `(^\|/)pom\.xml$` | Extended regex every changed path must match (npm: `^package(-lock)?\.json$`) |
+| `merge-method` | `merge` | `merge`, `squash` or `rebase` |
+
+```yaml
+# In the CI workflow (for example maven.yml), after the build job:
+  auto-merge-security-update:
+    needs: build
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: write
+    uses: IZGateway/izg-dependency-scripts/.github/workflows/auto-merge-security-update.yml@v1
+    secrets:
+      dependency-bot-app-id: ${{ secrets.DEPENDENCY_BOT_APP_ID }}
+      dependency-bot-app-key: ${{ secrets.DEPENDENCY_BOT_APP_KEY }}
+```
+
+---
+
+### Building-block actions for bot PRs
+
+The two workflows above are short recipes built from these composite actions. Use the
+workflows when they fit; use the actions directly to build a different flow (for example an
+npm security-update workflow). Composite actions cannot read `secrets.*`, so tokens and keys
+are inputs.
+
+Inside a reusable workflow, `uses: ./.github/actions/...` points at the **caller's**
+repository, so the workflows reference these actions as
+`IZGateway/izg-dependency-scripts/.github/actions/<name>@v1`. To test a branch of this
+repository end to end, point those refs at the branch temporarily.
+
+| Action | Ecosystem | What it does | Key inputs |
+|---|---|---|---|
+| `setup-izg-maven` | Maven | JDK + Maven + `~/.m2/settings.xml` with GitHub Packages credentials. Can replace the hand-written `settings.xml` in any IZ Gateway Maven workflow. Run after checkout. | `github-token`, `maven-servers`, `java-version`, `maven-version` |
+| `maven-patch-updates` | Maven | Applies patch updates (skipping the exclusions file), runs a quick verify, writes the PR description. Changes files only; does not commit. Output `has-changes`. | `exclusions-file`, `verify-command`, `auto-merge`, `ci-description` |
+| `open-signed-pr` | Any | Commits every modified tracked file as a **GitHub-signed** commit through the Git Data API, opens the PR from `<prefix>/nightly-*` or `<prefix>/manual-*`, and closes older nightly PRs. Outputs `pr-url`, `branch`, `head-sha`. | `token` (App token), `base-branch`, `auto-merge`, `branch-prefix`, `body-file`, `labels` |
+| `rerun-cancelled-build` | Any | Waits for the PR's CI run and re-runs it if it was cancelled while queued (concurrency groups keep one pending run). Set `timeout-minutes` on the job. | `github-token`, `ci-workflow`, `branch`, `head-sha`, `max-reruns` |
+| `auto-merge-bot-pr` | Any | Eligibility, provenance and content checks (fail closed), then approves as `github-actions[bot]` and merges as the bot with `--match-head-commit`. Run in a job that `needs:` the build. | `github-token`, `app-id`, `app-private-key`, `bot-login`, `base-branch`, `branch-prefix`, `allowed-files`, `merge-method` |
+
+Example, replacing a hand-written `settings.xml` step in a Maven workflow:
+
+```yaml
+    - uses: actions/checkout@v7
+    - uses: IZGateway/izg-dependency-scripts/.github/actions/setup-izg-maven@v1
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        maven-servers: github-bom github-core
+```
+
+---
+
 ## 🔧 Commands
 
 ### `fix-vulnerabilities`

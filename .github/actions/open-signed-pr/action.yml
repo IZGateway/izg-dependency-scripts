@@ -1,0 +1,138 @@
+name: Open Signed PR
+description: >
+  Commits every modified tracked file in the working tree as a GitHub-signed commit and
+  opens a pull request from a new branch. Works for any ecosystem (pom.xml, package.json,
+  package-lock.json, ...).
+
+  The commit is created through the Git Data API (blobs, tree, commit, ref) with the token
+  passed in and no author or committer, so GitHub signs it. With a GitHub App token, the
+  commit shows as verified with the App's bot as author and GitHub's signing account
+  (web-flow) as committer. auto-merge-bot-pr requires exactly that, so a commit made locally
+  with `git commit --author=...` cannot pass for the bot's.
+
+  Branch: <branch-prefix>/nightly-<UTC timestamp>-<run id>-<attempt> when auto-merge is
+  "true" (eligible for auto-merge-bot-pr), otherwise <branch-prefix>/manual-... (review only).
+  Opening a nightly PR closes older open nightly PRs into the same base branch.
+
+  Use a GitHub App token, not GITHUB_TOKEN: events raised with GITHUB_TOKEN start no
+  workflows, so the PR's CI would never run. The App needs contents and pull-requests write.
+
+inputs:
+  token:
+    description: GitHub App installation token (for example from actions/create-github-app-token).
+    required: true
+  base-branch:
+    required: false
+    default: develop
+  auto-merge:
+    description: '"true" names the branch <branch-prefix>/nightly-*; anything else names it <branch-prefix>/manual-*.'
+    required: false
+    default: "false"
+  branch-prefix:
+    required: false
+    default: security-updates
+  title:
+    required: false
+    default: "chore(deps): security patch updates"
+  commit-message:
+    required: false
+    default: "chore(deps): apply patch dependency updates"
+  body-file:
+    description: File holding the PR description.
+    required: false
+    default: pr-body.md
+  labels:
+    description: Comma-separated PR labels. Each must already exist.
+    required: false
+    default: dependencies
+
+outputs:
+  pr-url:
+    value: ${{ steps.open.outputs.pr-url }}
+  branch:
+    value: ${{ steps.open.outputs.branch }}
+  head-sha:
+    description: SHA of the signed commit (the PR head).
+    value: ${{ steps.open.outputs.head-sha }}
+
+runs:
+  using: composite
+  steps:
+    - name: Create signed commit and open PR
+      id: open
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        GH_REPO: ${{ github.repository }}
+        BASE_BRANCH: ${{ inputs.base-branch }}
+        AUTO_MERGE: ${{ inputs.auto-merge }}
+        BRANCH_PREFIX: ${{ inputs.branch-prefix }}
+        PR_TITLE: ${{ inputs.title }}
+        COMMIT_MESSAGE: ${{ inputs.commit-message }}
+        BODY_FILE: ${{ inputs.body-file }}
+        PR_LABELS: ${{ inputs.labels }}
+        RUN_SUFFIX: ${{ github.run_id }}-${{ github.run_attempt }}
+      run: |
+        set -euo pipefail
+        if git diff --quiet; then
+          echo "::error::open-signed-pr: no modified tracked files to commit."
+          exit 1
+        fi
+        if [ ! -f "$BODY_FILE" ]; then
+          echo "::error::open-signed-pr: PR description $BODY_FILE not found."
+          exit 1
+        fi
+
+        if [ "$AUTO_MERGE" = "true" ]; then KIND=nightly; else KIND=manual; fi
+        TODAY=$(date -u +'%Y-%m-%d')
+        BRANCH="${BRANCH_PREFIX}/${KIND}-$(date -u +'%Y%m%d-%H%M')-${RUN_SUFFIX}"
+
+        # One blob per modified file, a tree on top of HEAD's tree, a commit, then the branch.
+        # No author/committer is passed, so GitHub uses the token's identity and signs it.
+        BASE_SHA=$(git rev-parse HEAD)
+        BASE_TREE=$(git rev-parse 'HEAD^{tree}')
+        ENTRIES='[]'
+        while IFS= read -r FILE; do
+          BLOB_SHA=$(jq -n --rawfile c <(base64 -w0 "$FILE") '{content: $c, encoding: "base64"}' \
+            | gh api "repos/$GH_REPO/git/blobs" --input - --jq .sha)
+          ENTRIES=$(jq -c --arg path "$FILE" --arg sha "$BLOB_SHA" \
+            '. + [{path: $path, mode: "100644", type: "blob", sha: $sha}]' <<< "$ENTRIES")
+        done < <(git diff --name-only)
+        TREE_SHA=$(jq -n --arg base "$BASE_TREE" --argjson tree "$ENTRIES" '{base_tree: $base, tree: $tree}' \
+          | gh api "repos/$GH_REPO/git/trees" --input - --jq .sha)
+        COMMIT_SHA=$(jq -n --arg msg "$COMMIT_MESSAGE $TODAY" --arg tree "$TREE_SHA" --arg parent "$BASE_SHA" \
+            '{message: $msg, tree: $tree, parents: [$parent]}' \
+          | gh api "repos/$GH_REPO/git/commits" --input - --jq .sha)
+        gh api "repos/$GH_REPO/git/refs" -f ref="refs/heads/$BRANCH" -f sha="$COMMIT_SHA" > /dev/null
+        echo "Created $BRANCH at $COMMIT_SHA"
+
+        PR_URL=$(gh pr create \
+          --base "$BASE_BRANCH" \
+          --head "$BRANCH" \
+          --title "$PR_TITLE $TODAY" \
+          --body-file "$BODY_FILE" \
+          --label "$PR_LABELS")
+        echo "PR created: $PR_URL"
+        {
+          echo "pr-url=$PR_URL"
+          echo "branch=$BRANCH"
+          echo "head-sha=$COMMIT_SHA"
+        } >> "$GITHUB_OUTPUT"
+
+        # Close earlier open NIGHTLY PRs; this one supersedes them. Manual-run PRs are left
+        # alone because someone may be reviewing them.
+        if [ "$KIND" = "nightly" ]; then
+          gh pr list --state open --base "$BASE_BRANCH" --json number,headRefName \
+            --jq ".[] | select(.headRefName | startswith(\"${BRANCH_PREFIX}/nightly-\")) | select(.headRefName != \"$BRANCH\") | .number" \
+          | while read -r OLD; do
+              echo "Closing superseded PR #$OLD"
+              gh pr close "$OLD" --delete-branch --comment "Superseded by $PR_URL"
+            done
+        fi
+
+        {
+          echo ""
+          echo "## Pull request created"
+          echo ""
+          echo "$PR_URL"
+        } >> "$GITHUB_STEP_SUMMARY"
